@@ -10,6 +10,42 @@ const router = createRouter({
       component: HomeView,
     },
     {
+      path: '/trade',
+      name: 'trade',
+      component: () => import('@/views/TradeView.vue'),
+    },
+    {
+      path: '/lost-found',
+      name: 'lost-found',
+      component: () => import('@/views/LostFoundView.vue'),
+    },
+    {
+      path: '/group-buy',
+      name: 'group-buy',
+      component: () => import('@/views/GroupBuyView.vue'),
+    },
+    {
+      path: '/errand',
+      name: 'errand',
+      component: () => import('@/views/ErrandView.vue'),
+    },
+    {
+      path: '/publish',
+      name: 'publish',
+      component: () => import('@/views/PublishView.vue'),
+    },
+    {
+      path: '/message',
+      name: 'message',
+      component: () => import('@/views/MessageView.vue'),
+    },
+    {
+      path: '/user',
+      name: 'user',
+      component: () => import('@/views/UserCenterView.vue'),
+    },
+    // 保留原有通用页面路由以兼容已有功能
+    {
       path: '/list',
       name: 'list',
       component: () => import('@/views/ListView.vue'),
@@ -20,19 +56,12 @@ const router = createRouter({
       component: () => import('@/views/DetailView.vue'),
     },
     {
-      path: '/publish',
-      name: 'publish',
-      component: () => import('@/views/PublishView.vue'),
-    },
-    {
       path: '/messages',
-      name: 'messages',
-      component: () => import('@/views/MessageView.vue'),
+      redirect: '/message',
     },
     {
       path: '/profile',
-      name: 'profile',
-      component: () => import('@/views/ProfileView.vue'),
+      redirect: '/user',
     },
     {
       path: '/board',
