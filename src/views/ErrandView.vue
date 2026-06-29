@@ -1,30 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { getErrands, type ErrandItem } from '@/api/errand'
+import EmptyState from '@/components/EmptyState.vue'
 
-type ErrandType = 'delivery' | 'proxy' | 'other'
+const router = useRouter()
 
-interface ErrandItem {
-  id: number
-  type: ErrandType
-  title: string
-  description: string
-  reward: number
-  location: string
-  deadline: string
-  publisher: string
-  icon: string
-  status: 'open' | 'claimed' | 'done'
-}
-
-const tasks = ref<ErrandItem[]>([
-  { id: 1, type: 'delivery', title: '代取快递 — 中通×2', description: '有两件中通快递在校门口快递柜，帮忙代取送到宿舍楼下', reward: 5, location: '校门口快递柜 → 3号宿舍楼', deadline: '2026-06-28 18:00', publisher: '李同学', icon: '📦', status: 'open' },
-  { id: 2, type: 'proxy', title: '代办 — 教务处盖章', description: '帮忙去教务处盖一个实习证明公章，需提前联系我拿材料', reward: 15, location: '行政楼教务处', deadline: '2026-06-29 12:00', publisher: '张同学', icon: '📋', status: 'open' },
-  { id: 3, type: 'delivery', title: '代买 — 一食堂麻辣香锅', description: '帮忙打包一份麻辣香锅微辣，送到图书馆三楼自习区', reward: 8, location: '一食堂 → 图书馆三楼', deadline: '2026-06-28 12:30', publisher: '王同学', icon: '🍜', status: 'claimed' },
-  { id: 4, type: 'other', title: '委托 — 帮忙搬宿舍', description: '女生宿舍从4楼搬到6楼，主要是衣物和书籍，需要两个人帮忙', reward: 30, location: '女生宿舍4栋', deadline: '2026-07-01', publisher: '赵同学', icon: '📦', status: 'open' },
-  { id: 5, type: 'proxy', title: '代办 — 图书归还', description: '帮忙把三本书还到图书馆，逾期费已缴清', reward: 3, location: '图书馆服务台', deadline: '2026-06-28 17:00', publisher: '刘同学', icon: '📚', status: 'open' },
-  { id: 6, type: 'delivery', title: '代取外卖', description: '校门口取外卖披萨，送到逸夫楼308', reward: 5, location: '校门口 → 逸夫楼308', deadline: '2026-06-28 11:45', publisher: '陈同学', icon: '🍕', status: 'done' },
-])
-
+const tasks = ref<ErrandItem[]>([])
+const loading = ref(true)
 const activeFilter = ref('all')
 
 const filters = [
@@ -43,6 +26,16 @@ function statusLabel(status: string) {
   const map: Record<string, string> = { open: '待接单', claimed: '已接单', done: '已完成' }
   return map[status] || status
 }
+
+onMounted(async () => {
+  try {
+    tasks.value = await getErrands()
+  } catch (err) {
+    console.error('获取跑腿委托数据失败:', err)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -66,10 +59,13 @@ function statusLabel(status: string) {
     </div>
 
     <!-- 任务列表 -->
-    <div class="task-list">
-      <div v-for="task in filteredTasks()" :key="task.id" class="task-card">
+    <EmptyState v-if="!loading && filteredTasks().length === 0" message="暂无相关委托" />
+
+    <div v-else class="task-list">
+      <div v-for="task in filteredTasks()" :key="task.id" class="task-card" @click="router.push({ path: `/detail/${task.id}`, query: { type: 'errand' } })">
         <div class="task-left">
-          <div class="task-icon">{{ task.icon }}</div>
+          <img v-if="task.image" :src="task.image" :alt="task.title" class="task-img" />
+          <div v-else class="task-icon">🏃</div>
         </div>
         <div class="task-body">
           <div class="task-header">
@@ -78,7 +74,7 @@ function statusLabel(status: string) {
           </div>
           <p class="task-desc">{{ task.description }}</p>
           <div class="task-meta">
-            <span>📍 {{ task.location }}</span>
+            <span>📍 {{ task.pickupLocation }} → {{ task.deliveryLocation }}</span>
             <span>⏰ {{ task.deadline }}</span>
             <span>👤 {{ task.publisher }}</span>
           </div>
@@ -155,6 +151,7 @@ function statusLabel(status: string) {
   background: #fff;
   transition: box-shadow 0.2s;
   align-items: center;
+  cursor: pointer;
 }
 
 .task-card:hover {
@@ -173,6 +170,13 @@ function statusLabel(status: string) {
   align-items: center;
   justify-content: center;
   background: #f5f7fa;
+  border-radius: 10px;
+}
+
+.task-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
   border-radius: 10px;
 }
 

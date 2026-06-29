@@ -1,27 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { getGroupBuys, type GroupBuyItem } from '@/api/groupBuy'
+import EmptyState from '@/components/EmptyState.vue'
 
-interface GroupItem {
-  id: number
-  type: 'group-buy' | 'partner' | 'team'
-  title: string
-  description: string
-  target: number
-  current: number
-  deadline: string
-  initiator: string
-  icon: string
-}
+const router = useRouter()
 
-const items = ref<GroupItem[]>([
-  { id: 1, type: 'group-buy', title: '水果拼单 — 当季芒果', description: '云南大青芒，5斤装，满3人即可成团', target: 3, current: 2, deadline: '2026-06-30', initiator: '周同学', icon: '🥭' },
-  { id: 2, type: 'partner', title: '考研搭子 — 图书馆自习', description: '寻找每天一起泡图书馆的考研搭子，互相监督', target: 4, current: 2, deadline: '2026-07-05', initiator: '吴同学', icon: '📖' },
-  { id: 3, type: 'team', title: '组队 — 校园创业大赛', description: '招募前端开发1名、UI设计1名，已有产品+后端', target: 5, current: 3, deadline: '2026-07-10', initiator: '郑同学', icon: '🏆' },
-  { id: 4, type: 'group-buy', title: '零食拼单 — 坚果大礼包', description: '三只松鼠坚果礼盒，满5人享受团购价8折', target: 5, current: 3, deadline: '2026-06-29', initiator: '钱同学', icon: '🥜' },
-  { id: 5, type: 'partner', title: '运动搭子 — 夜跑/晨跑', description: '寻找一起跑步的小伙伴，配速6-7分钟/公里', target: 2, current: 1, deadline: '2026-07-03', initiator: '冯同学', icon: '🏃' },
-  { id: 6, type: 'group-buy', title: '教材团购 — 考研数学', description: '李永乐考研数学复习全书，满10人享7折', target: 10, current: 6, deadline: '2026-07-08', initiator: '褚同学', icon: '📘' },
-])
-
+const items = ref<GroupBuyItem[]>([])
+const loading = ref(true)
 const activeType = ref('all')
 
 const types = [
@@ -41,9 +27,19 @@ function typeLabel(key: string) {
   return t ? t.label : key
 }
 
-function progressPercent(item: GroupItem) {
-  return Math.round((item.current / item.target) * 100)
+function progressPercent(item: GroupBuyItem) {
+  return Math.round((item.currentCount / item.targetCount) * 100)
 }
+
+onMounted(async () => {
+  try {
+    items.value = await getGroupBuys()
+  } catch (err) {
+    console.error('获取拼单搭子数据失败:', err)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -67,10 +63,13 @@ function progressPercent(item: GroupItem) {
     </div>
 
     <!-- 拼单列表 -->
-    <div class="group-list">
-      <div v-for="item in filteredItems()" :key="item.id" class="group-card">
+    <EmptyState v-if="!loading && filteredItems().length === 0" message="暂无相关拼单" />
+
+    <div v-else class="group-list">
+      <div v-for="item in filteredItems()" :key="item.id" class="group-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'groupBuy' } })">
         <div class="gc-left">
-          <div class="gc-icon">{{ item.icon }}</div>
+          <img v-if="item.image" :src="item.image" :alt="item.title" class="gc-img" />
+          <div v-else class="gc-icon">🤝</div>
         </div>
         <div class="gc-body">
           <div class="gc-header">
@@ -83,7 +82,7 @@ function progressPercent(item: GroupItem) {
           </div>
           <div class="gc-meta">
             <span>👤 {{ item.initiator }}</span>
-            <span>👥 {{ item.current }}/{{ item.target }}人</span>
+            <span>👥 {{ item.currentCount }}/{{ item.targetCount }}人</span>
             <span>⏰ {{ item.deadline }}</span>
           </div>
         </div>
@@ -154,6 +153,7 @@ function progressPercent(item: GroupItem) {
   border-radius: 10px;
   background: #fff;
   transition: box-shadow 0.2s;
+  cursor: pointer;
 }
 
 .group-card:hover {
@@ -172,6 +172,13 @@ function progressPercent(item: GroupItem) {
   align-items: center;
   justify-content: center;
   background: #f5f7fa;
+  border-radius: 10px;
+}
+
+.gc-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
   border-radius: 10px;
 }
 

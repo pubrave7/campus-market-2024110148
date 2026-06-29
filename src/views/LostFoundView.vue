@@ -1,33 +1,28 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { getLostFounds, type LostFoundItem } from '@/api/lostFound'
+import EmptyState from '@/components/EmptyState.vue'
 
-type ItemType = 'lost' | 'found'
+const router = useRouter()
 
-interface LostFoundItem {
-  id: number
-  type: ItemType
-  title: string
-  description: string
-  location: string
-  date: string
-  contact: string
-  icon: string
-}
-
-const items = ref<LostFoundItem[]>([
-  { id: 1, type: 'lost', title: '黑色双肩包', description: '内含笔记本电脑和几本教材，包外侧有钥匙扣', location: '图书馆二楼阅览室', date: '2026-06-27', contact: '李同学 138xxxx1234', icon: '🎒' },
-  { id: 2, type: 'found', title: '校园卡（张XX）', description: '在一食堂门口捡到，学号 2024xxxx', location: '一食堂门口', date: '2026-06-28', contact: '王同学 139xxxx5678', icon: '💳' },
-  { id: 3, type: 'lost', title: '蓝牙耳机充电仓', description: '白色 AirPods 充电仓，带一个蓝色保护套', location: '教学楼 A201', date: '2026-06-26', contact: '赵同学 137xxxx9012', icon: '🎧' },
-  { id: 4, type: 'found', title: '钥匙串（3把钥匙）', description: '银色钥匙串，有3把钥匙和一个哆啦A梦挂件', location: '操场跑道旁', date: '2026-06-28', contact: '刘同学 136xxxx3456', icon: '🔑' },
-  { id: 5, type: 'lost', title: '雨伞（深蓝色）', description: '折叠伞，深蓝色，品牌天堂伞', location: '二食堂二楼', date: '2026-06-25', contact: '陈同学 135xxxx7890', icon: '🌂' },
-  { id: 6, type: 'found', title: 'U盘（32G 金士顿）', description: '银色金属外壳，挂绳上有"数据"字样', location: '计算机学院机房', date: '2026-06-27', contact: '孙同学 134xxxx2345', icon: '💾' },
-])
-
-const activeTab = ref<ItemType>('lost')
+const items = ref<LostFoundItem[]>([])
+const loading = ref(true)
+const activeTab = ref<'lost' | 'found'>('lost')
 
 function filteredItems() {
   return items.value.filter(item => item.type === activeTab.value)
 }
+
+onMounted(async () => {
+  try {
+    items.value = await getLostFounds()
+  } catch (err) {
+    console.error('获取失物招领数据失败:', err)
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
@@ -56,9 +51,12 @@ function filteredItems() {
     </div>
 
     <!-- 信息列表 -->
-    <div class="lf-list">
-      <div v-for="item in filteredItems()" :key="item.id" class="lf-card">
-        <div class="lf-icon">{{ item.icon }}</div>
+    <EmptyState v-if="!loading && filteredItems().length === 0" message="暂无相关信息" />
+
+    <div v-else class="lf-list">
+      <div v-for="item in filteredItems()" :key="item.id" class="lf-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'lostFound' } })">
+        <img v-if="item.image" :src="item.image" :alt="item.title" class="lf-img" />
+        <div v-else class="lf-icon">🔍</div>
         <div class="lf-body">
           <div class="lf-header">
             <h3>{{ item.title }}</h3>
@@ -139,6 +137,7 @@ function filteredItems() {
   border-radius: 10px;
   background: #fff;
   transition: box-shadow 0.2s;
+  cursor: pointer;
 }
 
 .lf-card:hover {
@@ -153,6 +152,14 @@ function filteredItems() {
   align-items: center;
   justify-content: center;
   background: #f5f7fa;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.lf-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
   border-radius: 10px;
   flex-shrink: 0;
 }
