@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { createTrade } from '@/api/trade'
 import { createErrand } from '@/api/errand'
 import { createGroupBuy } from '@/api/groupBuy'
 import { createLostFound } from '@/api/lostFound'
+import FormField from '@/components/FormField.vue'
+
+const router = useRouter()
 
 // ---- 发布类型 ----
 const publishTypes = [
@@ -15,6 +19,14 @@ const publishTypes = [
 type PublishType = (typeof publishTypes)[number]['key']
 
 const activeType = ref<PublishType>('trade')
+
+/** 发布类型对应的路由路径 */
+const typeRouteMap: Record<PublishType, string> = {
+  trade: '/trade',
+  errand: '/errand',
+  groupBuy: '/group-buy',
+  lostFound: '/lost-found',
+}
 
 // ---- 图片上传 ----
 const imageBase64 = ref('')
@@ -52,11 +64,12 @@ const submitting = ref(false)
 const submitted = ref(false)
 const errorMsg = ref('')
 
-// ---- 切换类型时清除提交状态 ----
-watch(activeType, () => {
-  submitted.value = false
-  errorMsg.value = ''
-})
+// ---- 表单校验错误 ----
+const formErrors = ref<Record<string, string>>({})
+
+function clearErrors() {
+  formErrors.value = {}
+}
 
 // ---- 表单字段 ----
 // 二手交易
@@ -119,36 +132,80 @@ const lostFoundForm = ref({
   contact: '',
 })
 
-// ---- 表单验证 ----
-function isTradeFormValid() {
-  return tradeForm.value.title && tradeForm.value.price && tradeForm.value.description && tradeForm.value.seller
+// ---- 表单校验函数 ----
+function validateTradeForm(): boolean {
+  clearErrors()
+  const e: Record<string, string> = {}
+  if (!tradeForm.value.title.trim()) e.title = '请输入商品名称'
+  if (!tradeForm.value.price || Number(tradeForm.value.price) <= 0) e.price = '请输入有效的价格（大于 0）'
+  if (!tradeForm.value.description.trim()) e.description = '请输入商品描述'
+  if (!tradeForm.value.seller.trim()) e.seller = '请输入发布人昵称'
+  formErrors.value = e
+  return Object.keys(e).length === 0
 }
 
-function isErrandFormValid() {
-  return errandForm.value.title && errandForm.value.description && errandForm.value.reward && errandForm.value.publisher
+function validateErrandForm(): boolean {
+  clearErrors()
+  const e: Record<string, string> = {}
+  if (!errandForm.value.title.trim()) e.title = '请输入委托标题'
+  if (!errandForm.value.description.trim()) e.description = '请输入详细描述'
+  if (!errandForm.value.reward || Number(errandForm.value.reward) <= 0) e.reward = '请输入有效的酬劳金额'
+  if (!errandForm.value.publisher.trim()) e.publisher = '请输入发布人昵称'
+  formErrors.value = e
+  return Object.keys(e).length === 0
 }
 
-function isGroupBuyFormValid() {
-  return groupBuyForm.value.title && groupBuyForm.value.description && groupBuyForm.value.targetCount && groupBuyForm.value.initiator
+function validateGroupBuyForm(): boolean {
+  clearErrors()
+  const e: Record<string, string> = {}
+  if (!groupBuyForm.value.title.trim()) e.title = '请输入拼单标题'
+  if (!groupBuyForm.value.description.trim()) e.description = '请输入详细描述'
+  if (!groupBuyForm.value.targetCount || Number(groupBuyForm.value.targetCount) < 2) e.targetCount = '目标人数至少为 2 人'
+  if (!groupBuyForm.value.initiator.trim()) e.initiator = '请输入发起人昵称'
+  formErrors.value = e
+  return Object.keys(e).length === 0
 }
 
-function isLostFoundFormValid() {
-  return lostFoundForm.value.title && lostFoundForm.value.description && lostFoundForm.value.contact
+function validateLostFoundForm(): boolean {
+  clearErrors()
+  const e: Record<string, string> = {}
+  if (!lostFoundForm.value.title.trim()) e.title = '请输入标题'
+  if (!lostFoundForm.value.description.trim()) e.description = '请输入详细描述'
+  if (!lostFoundForm.value.contact.trim()) e.contact = '请输入联系方式'
+  formErrors.value = e
+  return Object.keys(e).length === 0
 }
 
+/** 当前表单是否通过校验 */
 const isFormValid = computed(() => {
   switch (activeType.value) {
-    case 'trade': return isTradeFormValid()
-    case 'errand': return isErrandFormValid()
-    case 'groupBuy': return isGroupBuyFormValid()
-    case 'lostFound': return isLostFoundFormValid()
+    case 'trade': return validateTradeForm()
+    case 'errand': return validateErrandForm()
+    case 'groupBuy': return validateGroupBuyForm()
+    case 'lostFound': return validateLostFoundForm()
     default: return false
   }
 })
 
+// ---- 切换类型时清除状态和错误，重置表单 ----
+watch(activeType, () => {
+  submitted.value = false
+  errorMsg.value = ''
+  clearErrors()
+  resetForm()
+})
+
 // ---- 提交 ----
 async function handleSubmit() {
-  if (!isFormValid.value) return
+  // 提交前执行最终校验
+  let valid = false
+  switch (activeType.value) {
+    case 'trade': valid = validateTradeForm(); break
+    case 'errand': valid = validateErrandForm(); break
+    case 'groupBuy': valid = validateGroupBuyForm(); break
+    case 'lostFound': valid = validateLostFoundForm(); break
+  }
+  if (!valid) return
 
   submitting.value = true
   errorMsg.value = ''
@@ -160,13 +217,13 @@ async function handleSubmit() {
       case 'trade': {
         const now = new Date().toISOString().slice(0, 10)
         await createTrade({
-          title: tradeForm.value.title,
+          title: tradeForm.value.title.trim(),
           price: Number(tradeForm.value.price),
           category: tradeForm.value.category,
           condition: tradeForm.value.condition,
-          description: tradeForm.value.description,
-          seller: tradeForm.value.seller,
-          location: tradeForm.value.location || '未指定',
+          description: tradeForm.value.description.trim(),
+          seller: tradeForm.value.seller.trim(),
+          location: tradeForm.value.location.trim() || '未指定',
           publishTime: now,
           image: image || '',
           status: 'open',
@@ -176,13 +233,13 @@ async function handleSubmit() {
       case 'errand': {
         await createErrand({
           type: errandForm.value.type,
-          title: errandForm.value.title,
-          description: errandForm.value.description,
+          title: errandForm.value.title.trim(),
+          description: errandForm.value.description.trim(),
           reward: Number(errandForm.value.reward),
-          pickupLocation: errandForm.value.pickupLocation || '未指定',
-          deliveryLocation: errandForm.value.deliveryLocation || '未指定',
-          deadline: errandForm.value.deadline || '未指定',
-          publisher: errandForm.value.publisher,
+          pickupLocation: errandForm.value.pickupLocation.trim() || '未指定',
+          deliveryLocation: errandForm.value.deliveryLocation.trim() || '未指定',
+          deadline: errandForm.value.deadline.trim() || '未指定',
+          publisher: errandForm.value.publisher.trim(),
           status: 'open',
           image,
         })
@@ -191,13 +248,13 @@ async function handleSubmit() {
       case 'groupBuy': {
         await createGroupBuy({
           type: groupBuyForm.value.type,
-          title: groupBuyForm.value.title,
-          description: groupBuyForm.value.description,
+          title: groupBuyForm.value.title.trim(),
+          description: groupBuyForm.value.description.trim(),
           targetCount: Number(groupBuyForm.value.targetCount),
           currentCount: 1,
-          deadline: groupBuyForm.value.deadline || '未指定',
-          location: groupBuyForm.value.location || '未指定',
-          initiator: groupBuyForm.value.initiator,
+          deadline: groupBuyForm.value.deadline.trim() || '未指定',
+          location: groupBuyForm.value.location.trim() || '未指定',
+          initiator: groupBuyForm.value.initiator.trim(),
           status: 'open',
           image,
         })
@@ -206,12 +263,12 @@ async function handleSubmit() {
       case 'lostFound': {
         await createLostFound({
           type: lostFoundForm.value.type,
-          title: lostFoundForm.value.title,
-          itemName: lostFoundForm.value.itemName || lostFoundForm.value.title,
-          description: lostFoundForm.value.description,
-          location: lostFoundForm.value.location || '未指定',
+          title: lostFoundForm.value.title.trim(),
+          itemName: lostFoundForm.value.itemName.trim() || lostFoundForm.value.title.trim(),
+          description: lostFoundForm.value.description.trim(),
+          location: lostFoundForm.value.location.trim() || '未指定',
           date: lostFoundForm.value.date || new Date().toISOString().slice(0, 10),
-          contact: lostFoundForm.value.contact,
+          contact: lostFoundForm.value.contact.trim(),
           status: 'open',
           image,
         })
@@ -221,21 +278,40 @@ async function handleSubmit() {
 
     submitted.value = true
     resetForm()
-    setTimeout(() => { submitted.value = false }, 4000)
+    clearErrors()
+
+    // 提交成功后跳转到对应列表页
+    const targetPath = typeRouteMap[activeType.value]
+    setTimeout(() => {
+      submitted.value = false
+      router.push(targetPath)
+    }, 1500)
   } catch (err) {
     console.error('发布失败:', err)
-    errorMsg.value = '发布失败，请确保 json-server 已启动 (端口 3001)'
+    errorMsg.value = '发布失败，请先在新终端执行 npm run mock 启动 Mock 服务，再刷新页面重试'
   } finally {
     submitting.value = false
   }
 }
 
+// ---- 重置表单 ----
 function resetForm() {
   tradeForm.value = { title: '', price: '', category: '教材教辅', condition: '九成新', description: '', location: '', seller: '' }
   errandForm.value = { type: 'delivery', title: '', description: '', reward: '', pickupLocation: '', deliveryLocation: '', deadline: '', publisher: '' }
   groupBuyForm.value = { type: 'group-buy', title: '', description: '', targetCount: '', deadline: '', location: '', initiator: '' }
   lostFoundForm.value = { type: 'lost', title: '', itemName: '', description: '', location: '', date: '', contact: '' }
   removeImage()
+}
+
+// 暴露给模板使用的函数（避免 computed 副作用问题）
+function checkFormValid(): boolean {
+  switch (activeType.value) {
+    case 'trade': return !!tradeForm.value.title && !!tradeForm.value.price && !!tradeForm.value.description && !!tradeForm.value.seller
+    case 'errand': return !!errandForm.value.title && !!errandForm.value.description && !!errandForm.value.reward && !!errandForm.value.publisher
+    case 'groupBuy': return !!groupBuyForm.value.title && !!groupBuyForm.value.description && !!groupBuyForm.value.targetCount && !!groupBuyForm.value.initiator
+    case 'lostFound': return !!lostFoundForm.value.title && !!lostFoundForm.value.description && !!lostFoundForm.value.contact
+    default: return false
+  }
 }
 </script>
 
@@ -261,10 +337,9 @@ function resetForm() {
     </div>
 
     <!-- 表单 -->
-    <form class="publish-form" @submit.prevent="handleSubmit">
+    <form class="publish-form" @submit.prevent="handleSubmit" novalidate>
       <!-- ====== 图片上传（通用） ====== -->
-      <div class="form-group">
-        <label>📷 上传图片 <span class="optional">(选填)</span></label>
+      <FormField label="📷 上传图片">
         <div class="image-upload-area">
           <template v-if="imagePreview">
             <div class="image-preview-wrap">
@@ -280,145 +355,122 @@ function resetForm() {
           </label>
         </div>
         <p v-if="imageName" class="image-name">已选择: {{ imageName }}</p>
-      </div>
+      </FormField>
 
       <!-- ====== 二手交易表单 ====== -->
       <template v-if="activeType === 'trade'">
-        <div class="form-group">
-          <label for="trade-title">商品名称 <span class="required">*</span></label>
-          <input id="trade-title" v-model="tradeForm.title" type="text" placeholder="请输入商品名称" required />
-        </div>
+        <FormField label="商品名称" field-id="trade-title" required :error="formErrors.title">
+          <input id="trade-title" v-model="tradeForm.title" type="text" placeholder="请输入商品名称" />
+        </FormField>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="trade-price">价格 (¥) <span class="required">*</span></label>
-            <input id="trade-price" v-model="tradeForm.price" type="number" placeholder="0" required min="0" step="0.01" />
-          </div>
-          <div class="form-group form-half">
-            <label for="trade-condition">成色</label>
+          <FormField label="价格 (¥)" field-id="trade-price" required :error="formErrors.price" class="form-half">
+            <input id="trade-price" v-model="tradeForm.price" type="number" placeholder="0" min="0" step="0.01" />
+          </FormField>
+          <FormField label="成色" field-id="trade-condition" class="form-half">
             <select id="trade-condition" v-model="tradeForm.condition">
               <option v-for="c in conditions" :key="c" :value="c">{{ c }}</option>
             </select>
-          </div>
+          </FormField>
         </div>
 
-        <div class="form-group">
-          <label for="trade-category">分类</label>
+        <FormField label="分类" field-id="trade-category">
           <select id="trade-category" v-model="tradeForm.category">
             <option v-for="cat in tradeCategories" :key="cat" :value="cat">{{ cat }}</option>
           </select>
-        </div>
+        </FormField>
 
-        <div class="form-group">
-          <label for="trade-desc">商品描述 <span class="required">*</span></label>
-          <textarea id="trade-desc" v-model="tradeForm.description" placeholder="请描述商品状况、使用时间等信息" rows="4" required></textarea>
-        </div>
+        <FormField label="商品描述" field-id="trade-desc" required :error="formErrors.description">
+          <textarea id="trade-desc" v-model="tradeForm.description" placeholder="请描述商品状况、使用时间等信息" rows="4"></textarea>
+        </FormField>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="trade-location">所在校区</label>
+          <FormField label="所在校区" field-id="trade-location" class="form-half">
             <input id="trade-location" v-model="tradeForm.location" type="text" placeholder="如：东校区" />
-          </div>
-          <div class="form-group form-half">
-            <label for="trade-seller">发布人 <span class="required">*</span></label>
-            <input id="trade-seller" v-model="tradeForm.seller" type="text" placeholder="你的昵称" required />
-          </div>
+          </FormField>
+          <FormField label="发布人" field-id="trade-seller" required :error="formErrors.seller" class="form-half">
+            <input id="trade-seller" v-model="tradeForm.seller" type="text" placeholder="你的昵称" />
+          </FormField>
         </div>
       </template>
 
       <!-- ====== 跑腿委托表单 ====== -->
       <template v-if="activeType === 'errand'">
-        <div class="form-group">
-          <label for="errand-type">委托类型</label>
+        <FormField label="委托类型" field-id="errand-type">
           <select id="errand-type" v-model="errandForm.type">
             <option v-for="et in errandTypes" :key="et.key" :value="et.key">{{ et.label }}</option>
           </select>
-        </div>
+        </FormField>
 
-        <div class="form-group">
-          <label for="errand-title">标题 <span class="required">*</span></label>
-          <input id="errand-title" v-model="errandForm.title" type="text" placeholder="简要描述委托内容" required />
-        </div>
+        <FormField label="标题" field-id="errand-title" required :error="formErrors.title">
+          <input id="errand-title" v-model="errandForm.title" type="text" placeholder="简要描述委托内容" />
+        </FormField>
 
-        <div class="form-group">
-          <label for="errand-desc">详细描述 <span class="required">*</span></label>
-          <textarea id="errand-desc" v-model="errandForm.description" placeholder="详细说明委托事项、要求等" rows="3" required></textarea>
-        </div>
+        <FormField label="详细描述" field-id="errand-desc" required :error="formErrors.description">
+          <textarea id="errand-desc" v-model="errandForm.description" placeholder="详细说明委托事项、要求等" rows="3"></textarea>
+        </FormField>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="errand-reward">酬劳 (¥) <span class="required">*</span></label>
-            <input id="errand-reward" v-model="errandForm.reward" type="number" placeholder="0" required min="0" />
-          </div>
-          <div class="form-group form-half">
-            <label for="errand-deadline">截止时间</label>
+          <FormField label="酬劳 (¥)" field-id="errand-reward" required :error="formErrors.reward" class="form-half">
+            <input id="errand-reward" v-model="errandForm.reward" type="number" placeholder="0" min="0" />
+          </FormField>
+          <FormField label="截止时间" field-id="errand-deadline" class="form-half">
             <input id="errand-deadline" v-model="errandForm.deadline" type="text" placeholder="如：2026-07-01 18:00" />
-          </div>
+          </FormField>
         </div>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="errand-pickup">取件/起点</label>
+          <FormField label="取件/起点" field-id="errand-pickup" class="form-half">
             <input id="errand-pickup" v-model="errandForm.pickupLocation" type="text" placeholder="如：校门口快递柜" />
-          </div>
-          <div class="form-group form-half">
-            <label for="errand-delivery">送达/终点</label>
+          </FormField>
+          <FormField label="送达/终点" field-id="errand-delivery" class="form-half">
             <input id="errand-delivery" v-model="errandForm.deliveryLocation" type="text" placeholder="如：3号宿舍楼" />
-          </div>
+          </FormField>
         </div>
 
-        <div class="form-group">
-          <label for="errand-publisher">发布人 <span class="required">*</span></label>
-          <input id="errand-publisher" v-model="errandForm.publisher" type="text" placeholder="你的昵称" required />
-        </div>
+        <FormField label="发布人" field-id="errand-publisher" required :error="formErrors.publisher">
+          <input id="errand-publisher" v-model="errandForm.publisher" type="text" placeholder="你的昵称" />
+        </FormField>
       </template>
 
       <!-- ====== 拼单搭子表单 ====== -->
       <template v-if="activeType === 'groupBuy'">
-        <div class="form-group">
-          <label for="gb-type">拼单类型</label>
+        <FormField label="拼单类型" field-id="gb-type">
           <select id="gb-type" v-model="groupBuyForm.type">
             <option v-for="gt in groupBuyTypes" :key="gt.key" :value="gt.key">{{ gt.label }}</option>
           </select>
-        </div>
+        </FormField>
 
-        <div class="form-group">
-          <label for="gb-title">标题 <span class="required">*</span></label>
-          <input id="gb-title" v-model="groupBuyForm.title" type="text" placeholder="简要描述拼单/搭子/组队内容" required />
-        </div>
+        <FormField label="标题" field-id="gb-title" required :error="formErrors.title">
+          <input id="gb-title" v-model="groupBuyForm.title" type="text" placeholder="简要描述拼单/搭子/组队内容" />
+        </FormField>
 
-        <div class="form-group">
-          <label for="gb-desc">详细描述 <span class="required">*</span></label>
-          <textarea id="gb-desc" v-model="groupBuyForm.description" placeholder="详细说明拼单物品、搭子要求、组队目标等" rows="3" required></textarea>
-        </div>
+        <FormField label="详细描述" field-id="gb-desc" required :error="formErrors.description">
+          <textarea id="gb-desc" v-model="groupBuyForm.description" placeholder="详细说明拼单物品、搭子要求、组队目标等" rows="3"></textarea>
+        </FormField>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="gb-count">目标人数 <span class="required">*</span></label>
-            <input id="gb-count" v-model="groupBuyForm.targetCount" type="number" placeholder="如：3" required min="2" />
-          </div>
-          <div class="form-group form-half">
-            <label for="gb-deadline">截止时间</label>
+          <FormField label="目标人数" field-id="gb-count" required :error="formErrors.targetCount" class="form-half">
+            <input id="gb-count" v-model="groupBuyForm.targetCount" type="number" placeholder="如：3" min="2" />
+          </FormField>
+          <FormField label="截止时间" field-id="gb-deadline" class="form-half">
             <input id="gb-deadline" v-model="groupBuyForm.deadline" type="text" placeholder="如：2026-07-05" />
-          </div>
+          </FormField>
         </div>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="gb-location">地点</label>
+          <FormField label="地点" field-id="gb-location" class="form-half">
             <input id="gb-location" v-model="groupBuyForm.location" type="text" placeholder="如：东校区" />
-          </div>
-          <div class="form-group form-half">
-            <label for="gb-initiator">发起人 <span class="required">*</span></label>
-            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" placeholder="你的昵称" required />
-          </div>
+          </FormField>
+          <FormField label="发起人" field-id="gb-initiator" required :error="formErrors.initiator" class="form-half">
+            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" placeholder="你的昵称" />
+          </FormField>
         </div>
       </template>
 
       <!-- ====== 失物招领表单 ====== -->
       <template v-if="activeType === 'lostFound'">
-        <div class="form-group">
-          <label>信息类型</label>
+        <FormField label="信息类型">
           <div class="toggle-row">
             <button
               type="button"
@@ -437,49 +489,43 @@ function resetForm() {
               🙌 失物招领
             </button>
           </div>
-        </div>
+        </FormField>
 
-        <div class="form-group">
-          <label for="lf-title">标题 <span class="required">*</span></label>
-          <input id="lf-title" v-model="lostFoundForm.title" type="text" placeholder="如：黑色双肩包" required />
-        </div>
+        <FormField label="标题" field-id="lf-title" required :error="formErrors.title">
+          <input id="lf-title" v-model="lostFoundForm.title" type="text" placeholder="如：黑色双肩包" />
+        </FormField>
 
-        <div class="form-group">
-          <label for="lf-item-name">物品名称</label>
+        <FormField label="物品名称" field-id="lf-item-name">
           <input id="lf-item-name" v-model="lostFoundForm.itemName" type="text" placeholder="如：双肩包" />
-        </div>
+        </FormField>
 
-        <div class="form-group">
-          <label for="lf-desc">详细描述 <span class="required">*</span></label>
-          <textarea id="lf-desc" v-model="lostFoundForm.description" placeholder="描述物品特征、遗失/拾取经过等" rows="3" required></textarea>
-        </div>
+        <FormField label="详细描述" field-id="lf-desc" required :error="formErrors.description">
+          <textarea id="lf-desc" v-model="lostFoundForm.description" placeholder="描述物品特征、遗失/拾取经过等" rows="3"></textarea>
+        </FormField>
 
         <div class="form-row">
-          <div class="form-group form-half">
-            <label for="lf-location">地点</label>
+          <FormField label="地点" field-id="lf-location" class="form-half">
             <input id="lf-location" v-model="lostFoundForm.location" type="text" placeholder="如：图书馆二楼" />
-          </div>
-          <div class="form-group form-half">
-            <label for="lf-date">日期</label>
+          </FormField>
+          <FormField label="日期" field-id="lf-date" class="form-half">
             <input id="lf-date" v-model="lostFoundForm.date" type="date" />
-          </div>
+          </FormField>
         </div>
 
-        <div class="form-group">
-          <label for="lf-contact">联系方式 <span class="required">*</span></label>
-          <input id="lf-contact" v-model="lostFoundForm.contact" type="text" placeholder="如：李同学 138xxxx1234" required />
-        </div>
+        <FormField label="联系方式" field-id="lf-contact" required :error="formErrors.contact">
+          <input id="lf-contact" v-model="lostFoundForm.contact" type="text" placeholder="如：李同学 138xxxx1234" />
+        </FormField>
       </template>
 
       <!-- 提交按钮 -->
-      <button type="submit" class="submit-btn" :disabled="!isFormValid || submitting">
+      <button type="submit" class="submit-btn" :disabled="!checkFormValid() || submitting">
         {{ submitting ? '发布中...' : '🚀 立即发布' }}
       </button>
     </form>
 
     <!-- 成功提示 -->
     <div v-if="submitted" class="success-msg">
-      ✅ 发布成功！请前往对应页面查看。
+      ✅ 发布成功！正在跳转到对应列表页...
     </div>
 
     <!-- 错误提示 -->
@@ -551,28 +597,6 @@ function resetForm() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.form-group label {
-  font-weight: 500;
-  color: #333;
-  font-size: 14px;
-}
-
-.required {
-  color: #e74c3c;
-}
-
-.optional {
-  color: #aaa;
-  font-weight: 400;
-  font-size: 12px;
 }
 
 .form-row {
@@ -683,7 +707,7 @@ select:focus {
 }
 
 .image-name {
-  margin: 0;
+  margin: 4px 0 0;
   font-size: 12px;
   color: #888;
 }
