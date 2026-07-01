@@ -5,9 +5,11 @@ import { createTrade } from '@/api/trade'
 import { createErrand } from '@/api/errand'
 import { createGroupBuy } from '@/api/groupBuy'
 import { createLostFound } from '@/api/lostFound'
+import { useUserStore } from '@/stores/user'
 import FormField from '@/components/FormField.vue'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 // ---- 发布类型 ----
 const publishTypes = [
@@ -80,7 +82,7 @@ const tradeForm = ref({
   condition: '九成新',
   description: '',
   location: '',
-  seller: '',
+  seller: userStore.displayName,
 })
 
 const tradeCategories = ['教材教辅', '数码电子', '生活用品', '出行工具', '文体娱乐']
@@ -95,7 +97,7 @@ const errandForm = ref({
   pickupLocation: '',
   deliveryLocation: '',
   deadline: '',
-  publisher: '',
+  publisher: userStore.displayName,
 })
 
 const errandTypes = [
@@ -112,7 +114,7 @@ const groupBuyForm = ref({
   targetCount: '',
   deadline: '',
   location: '',
-  initiator: '',
+  initiator: userStore.displayName,
 })
 
 const groupBuyTypes = [
@@ -279,6 +281,7 @@ async function handleSubmit() {
     submitted.value = true
     resetForm()
     clearErrors()
+    userStore.incrementPublished()
 
     // 提交成功后跳转到对应列表页
     const targetPath = typeRouteMap[activeType.value]
@@ -296,9 +299,9 @@ async function handleSubmit() {
 
 // ---- 重置表单 ----
 function resetForm() {
-  tradeForm.value = { title: '', price: '', category: '教材教辅', condition: '九成新', description: '', location: '', seller: '' }
-  errandForm.value = { type: 'delivery', title: '', description: '', reward: '', pickupLocation: '', deliveryLocation: '', deadline: '', publisher: '' }
-  groupBuyForm.value = { type: 'group-buy', title: '', description: '', targetCount: '', deadline: '', location: '', initiator: '' }
+  tradeForm.value = { title: '', price: '', category: '教材教辅', condition: '九成新', description: '', location: '', seller: userStore.displayName }
+  errandForm.value = { type: 'delivery', title: '', description: '', reward: '', pickupLocation: '', deliveryLocation: '', deadline: '', publisher: userStore.displayName }
+  groupBuyForm.value = { type: 'group-buy', title: '', description: '', targetCount: '', deadline: '', location: '', initiator: userStore.displayName }
   lostFoundForm.value = { type: 'lost', title: '', itemName: '', description: '', location: '', date: '', contact: '' }
   removeImage()
 }
@@ -389,7 +392,7 @@ function checkFormValid(): boolean {
             <input id="trade-location" v-model="tradeForm.location" type="text" placeholder="如：东校区" />
           </FormField>
           <FormField label="发布人" field-id="trade-seller" required :error="formErrors.seller" class="form-half">
-            <input id="trade-seller" v-model="tradeForm.seller" type="text" placeholder="你的昵称" />
+            <input id="trade-seller" v-model="tradeForm.seller" type="text" placeholder="自动使用当前用户名" />
           </FormField>
         </div>
       </template>
@@ -429,7 +432,7 @@ function checkFormValid(): boolean {
         </div>
 
         <FormField label="发布人" field-id="errand-publisher" required :error="formErrors.publisher">
-          <input id="errand-publisher" v-model="errandForm.publisher" type="text" placeholder="你的昵称" />
+          <input id="errand-publisher" v-model="errandForm.publisher" type="text" placeholder="自动使用当前用户名" />
         </FormField>
       </template>
 
@@ -463,7 +466,7 @@ function checkFormValid(): boolean {
             <input id="gb-location" v-model="groupBuyForm.location" type="text" placeholder="如：东校区" />
           </FormField>
           <FormField label="发起人" field-id="gb-initiator" required :error="formErrors.initiator" class="form-half">
-            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" placeholder="你的昵称" />
+            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" placeholder="自动使用当前用户名" />
           </FormField>
         </div>
       </template>

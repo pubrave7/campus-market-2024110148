@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getErrands, type ErrandItem } from '@/api/errand'
+import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
+const favoriteStore = useFavoriteStore()
 
 const tasks = ref<ErrandItem[]>([])
 const loading = ref(true)
@@ -25,6 +27,19 @@ function filteredTasks() {
 function statusLabel(status: string) {
   const map: Record<string, string> = { open: '待接单', claimed: '已接单', done: '已完成' }
   return map[status] || status
+}
+
+function handleFavorite(task: ErrandItem, event: Event) {
+  event.stopPropagation()
+  favoriteStore.toggleFavorite({
+    id: task.id,
+    type: 'errand',
+    title: task.title,
+    price: task.reward,
+    publisher: task.publisher,
+    image: task.image,
+    time: task.deadline,
+  })
 }
 
 onMounted(async () => {
@@ -83,6 +98,14 @@ onMounted(async () => {
           <span class="reward">¥{{ task.reward }}</span>
           <span class="reward-label">酬劳</span>
         </div>
+        <button
+          class="fav-btn"
+          :class="{ favorited: favoriteStore.isFavorited(task.id, 'errand') }"
+          @click="handleFavorite(task, $event)"
+          :title="favoriteStore.isFavorited(task.id, 'errand') ? '取消收藏' : '添加收藏'"
+        >
+          {{ favoriteStore.isFavorited(task.id, 'errand') ? '❤️' : '🤍' }}
+        </button>
       </div>
     </div>
   </section>
@@ -251,5 +274,31 @@ onMounted(async () => {
 .reward-label {
   font-size: 11px;
   color: #aaa;
+}
+
+/* ---- 收藏按钮 ---- */
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  padding: 4px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.fav-btn:hover {
+  transform: scale(1.25);
+}
+
+.fav-btn.favorited {
+  animation: heartBeat 0.3s ease;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
 </style>

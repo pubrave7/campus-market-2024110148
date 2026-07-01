@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getGroupBuys, type GroupBuyItem } from '@/api/groupBuy'
+import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
+const favoriteStore = useFavoriteStore()
 
 const items = ref<GroupBuyItem[]>([])
 const loading = ref(true)
@@ -29,6 +31,18 @@ function typeLabel(key: string) {
 
 function progressPercent(item: GroupBuyItem) {
   return Math.round((item.currentCount / item.targetCount) * 100)
+}
+
+function handleFavorite(item: GroupBuyItem, event: Event) {
+  event.stopPropagation()
+  favoriteStore.toggleFavorite({
+    id: item.id,
+    type: 'groupBuy',
+    title: item.title,
+    initiator: item.initiator,
+    image: item.image,
+    time: item.deadline,
+  })
 }
 
 onMounted(async () => {
@@ -86,6 +100,14 @@ onMounted(async () => {
             <span>⏰ {{ item.deadline }}</span>
           </div>
         </div>
+        <button
+          class="fav-btn"
+          :class="{ favorited: favoriteStore.isFavorited(item.id, 'groupBuy') }"
+          @click="handleFavorite(item, $event)"
+          :title="favoriteStore.isFavorited(item.id, 'groupBuy') ? '取消收藏' : '添加收藏'"
+        >
+          {{ favoriteStore.isFavorited(item.id, 'groupBuy') ? '❤️' : '🤍' }}
+        </button>
       </div>
     </div>
   </section>
@@ -154,6 +176,7 @@ onMounted(async () => {
   background: #fff;
   transition: box-shadow 0.2s;
   cursor: pointer;
+  align-items: center;
 }
 
 .group-card:hover {
@@ -234,5 +257,31 @@ onMounted(async () => {
   gap: 16px;
   font-size: 12px;
   color: #aaa;
+}
+
+/* ---- 收藏按钮 ---- */
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  padding: 4px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.fav-btn:hover {
+  transform: scale(1.25);
+}
+
+.fav-btn.favorited {
+  animation: heartBeat 0.3s ease;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
 </style>

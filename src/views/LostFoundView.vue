@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getLostFounds, type LostFoundItem } from '@/api/lostFound'
+import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
+const favoriteStore = useFavoriteStore()
 
 const items = ref<LostFoundItem[]>([])
 const loading = ref(true)
@@ -12,6 +14,18 @@ const activeTab = ref<'lost' | 'found'>('lost')
 
 function filteredItems() {
   return items.value.filter(item => item.type === activeTab.value)
+}
+
+function handleFavorite(item: LostFoundItem, event: Event) {
+  event.stopPropagation()
+  favoriteStore.toggleFavorite({
+    id: item.id,
+    type: 'lostFound',
+    title: item.title,
+    seller: item.contact,
+    image: item.image,
+    time: item.date,
+  })
 }
 
 onMounted(async () => {
@@ -71,6 +85,14 @@ onMounted(async () => {
             <span>👤 {{ item.contact }}</span>
           </div>
         </div>
+        <button
+          class="fav-btn"
+          :class="{ favorited: favoriteStore.isFavorited(item.id, 'lostFound') }"
+          @click="handleFavorite(item, $event)"
+          :title="favoriteStore.isFavorited(item.id, 'lostFound') ? '取消收藏' : '添加收藏'"
+        >
+          {{ favoriteStore.isFavorited(item.id, 'lostFound') ? '❤️' : '🤍' }}
+        </button>
       </div>
     </div>
   </section>
@@ -138,6 +160,7 @@ onMounted(async () => {
   background: #fff;
   transition: box-shadow 0.2s;
   cursor: pointer;
+  align-items: center;
 }
 
 .lf-card:hover {
@@ -211,5 +234,31 @@ onMounted(async () => {
   flex-wrap: wrap;
   font-size: 12px;
   color: #aaa;
+}
+
+/* ---- 收藏按钮 ---- */
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 22px;
+  padding: 4px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.fav-btn:hover {
+  transform: scale(1.25);
+}
+
+.fav-btn.favorited {
+  animation: heartBeat 0.3s ease;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
 </style>

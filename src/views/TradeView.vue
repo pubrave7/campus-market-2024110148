@@ -2,10 +2,12 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getTrades, type TradeItem } from '@/api/trade'
+import { useFavoriteStore } from '@/stores/favorite'
 import ItemCard from '@/components/ItemCard.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
 const router = useRouter()
+const favoriteStore = useFavoriteStore()
 
 const items = ref<TradeItem[]>([])
 const loading = ref(true)
@@ -16,6 +18,18 @@ const activeCategory = ref('全部')
 function filteredItems() {
   if (activeCategory.value === '全部') return items.value
   return items.value.filter(item => item.category === activeCategory.value)
+}
+
+function handleFavorite(item: TradeItem, event: Event) {
+  event.stopPropagation()
+  favoriteStore.toggleFavorite({
+    id: item.id,
+    type: 'trade',
+    title: item.title,
+    price: item.price,
+    seller: item.seller,
+    image: item.image,
+  })
 }
 
 onMounted(async () => {
@@ -66,7 +80,17 @@ onMounted(async () => {
         </template>
         <template #footer>
           <span class="price">¥{{ item.price }}</span>
-          <span class="seller">{{ item.seller }}</span>
+          <div class="footer-right">
+            <button
+              class="fav-btn"
+              :class="{ favorited: favoriteStore.isFavorited(item.id, 'trade') }"
+              @click="handleFavorite(item, $event)"
+              :title="favoriteStore.isFavorited(item.id, 'trade') ? '取消收藏' : '添加收藏'"
+            >
+              {{ favoriteStore.isFavorited(item.id, 'trade') ? '❤️' : '🤍' }}
+            </button>
+            <span class="seller">{{ item.seller }}</span>
+          </div>
         </template>
       </ItemCard>
     </div>
@@ -148,8 +172,50 @@ onMounted(async () => {
   color: #e74c3c;
 }
 
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  transition: transform 0.2s;
+  line-height: 1;
+}
+
+.fav-btn:hover {
+  transform: scale(1.25);
+}
+
+.fav-btn.favorited {
+  animation: heartBeat 0.3s ease;
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
 .seller {
   font-size: 12px;
   color: #aaa;
+}
+
+@media (max-width: 768px) {
+  .trade-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .trade-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

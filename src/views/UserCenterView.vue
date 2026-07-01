@@ -1,29 +1,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { useFavoriteStore } from '@/stores/favorite'
 
 const router = useRouter()
+const userStore = useUserStore()
+const favoriteStore = useFavoriteStore()
 
-// ====== 用户信息 ======
-const user = ref({
-  name: '张同学',
-  avatar: '',
-  school: '某某大学',
-  major: '计算机科学与技术',
-  studentId: '2024xxxxx',
-  phone: '138****8888',
-  email: 'zhang@example.com',
-  joinedAt: '2026-06-01',
-  bio: '爱折腾的码农一枚，喜欢淘二手好书 📚',
-})
-
-const stats = ref({
-  published: 5,
-  sold: 3,
-  purchased: 2,
-  favorited: 12,
-  errandsCompleted: 1,
-})
+// ====== 统计数据（来自 Store） ======
+const stats = computed(() => ({
+  published: userStore.publishedCount,
+  sold: userStore.soldCount,
+  purchased: userStore.purchasedCount,
+  favorited: favoriteStore.count,
+}))
 
 // ====== 视图状态 ======
 type SubPage = 'main' | 'published' | 'favorites' | 'purchased' | 'errands' | 'lostfounds' | 'settings'
@@ -49,20 +40,13 @@ function goBack() {
   currentPage.value = 'main'
 }
 
-// ====== 我的发布 mock ======
+// ====== 我的发布 mock（组合展示，为后续真实查询做准备） ======
 const myPublished = ref([
   { id: 1, type: 'trade', title: '二手教材《数据结构》', price: '¥25', status: 'open', time: '2026-06-25', views: 128, image: 'https://placehold.co/60x60/e8f4fd/409eff?text=Book' },
   { id: 2, type: 'errand', title: '代取快递 — 中通×2', price: '¥5', status: 'open', time: '2026-06-28', views: 34, image: '' },
   { id: 3, type: 'groupBuy', title: '水果拼单 — 当季芒果', price: '¥25/人', status: 'open', time: '2026-06-27', views: 56, image: '' },
   { id: 4, type: 'lostFound', title: '黑色双肩包（寻物）', price: '—', status: 'open', time: '2026-06-27', views: 89, image: '' },
   { id: 5, type: 'trade', title: 'LED 护眼台灯', price: '¥45', status: 'closed', time: '2026-06-20', views: 210, image: 'https://placehold.co/60x60/fff7ed/f59e0b?text=Lamp' },
-])
-
-// ====== 我的收藏 mock ======
-const myFavorites = ref([
-  { id: 1, type: 'trade', title: '机械键盘 Cherry MX 红轴', price: '¥180', seller: '王同学', time: '2026-06-26', image: 'https://placehold.co/60x60/f5f0ff/7c3aed?text=KB' },
-  { id: 2, type: 'trade', title: '蓝牙耳机（漫步者）', price: '¥60', seller: '刘同学', time: '2026-06-24', image: 'https://placehold.co/60x60/f0fdf4/22c55e?text=EP' },
-  { id: 3, type: 'errand', title: '代办 — 教务处盖章', price: '¥15', seller: '张同学', time: '2026-06-29', image: '' },
 ])
 
 // ====== 购买记录 mock ======
@@ -84,19 +68,23 @@ const myLostFounds = ref([
   { id: 2, type: 'found', title: '校园卡（张XX）', status: 'open', time: '2026-06-28', location: '一食堂门口' },
 ])
 
-// ====== 账号设置 ======
+// ====== 账号设置（从 Store 读取） ======
 const settingsForm = ref({
-  nickname: '张同学',
-  phone: '138****8888',
-  email: 'zhang@example.com',
-  bio: '爱折腾的码农一枚，喜欢淘二手好书 📚',
+  nickname: userStore.name,
+  phone: userStore.phone,
+  email: userStore.email,
+  bio: userStore.bio,
 })
 const settingsSaved = ref(false)
 
 function saveSettings() {
+  userStore.updateProfile({
+    name: settingsForm.value.nickname,
+    phone: settingsForm.value.phone,
+    email: settingsForm.value.email,
+    bio: settingsForm.value.bio,
+  })
   settingsSaved.value = true
-  user.value.name = settingsForm.value.nickname
-  user.value.bio = settingsForm.value.bio
   setTimeout(() => { settingsSaved.value = false }, 2500)
 }
 
@@ -111,8 +99,21 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
+function typeIcon(type: string) {
+  const map: Record<string, string> = { trade: '🛒', errand: '🏃', groupBuy: '🤝', lostFound: '🔍' }
+  return map[type] || '📦'
+}
+
 function statusClass(status: string) {
   return status === 'open' ? 's-open' : 's-closed'
+}
+
+/** 从收藏 Store 中获取收藏条目的显示信息 */
+function favDisplayInfo(item: typeof favoriteStore.items[number]) {
+  const label = typeLabel(item.type)
+  const person = item.seller || item.publisher || item.initiator || '—'
+  const price = item.price !== undefined ? (typeof item.price === 'number' ? `¥${item.price}` : item.price) : '—'
+  return { label, person, price }
 }
 
 const menuSections = [
@@ -120,7 +121,7 @@ const menuSections = [
     title: '交易管理',
     items: [
       { icon: '📋', label: '我的发布', desc: '查看已发布的商品、拼单等信息', page: 'published' as SubPage, color: '#409eff' },
-      { icon: '❤️', label: '我的收藏', desc: '收藏的宝贝', page: 'favorites' as SubPage, color: '#e74c3c' },
+      { icon: '❤️', label: '我的收藏', desc: `收藏了 ${favoriteStore.count} 个宝贝`, page: 'favorites' as SubPage, color: '#e74c3c' },
       { icon: '📦', label: '购买记录', desc: '已购买的物品', page: 'purchased' as SubPage, color: '#67c23a' },
     ],
   },
@@ -144,16 +145,16 @@ const menuSections = [
         <div class="hero-bg"></div>
         <div class="hero-content">
           <div class="avatar-wrap">
-            <div class="avatar-main">张</div>
+            <div class="avatar-main">{{ userStore.avatarChar }}</div>
             <span class="verified-badge">✓</span>
           </div>
-          <h2 class="hero-name">{{ user.name }}</h2>
-          <p class="hero-school">{{ user.school }} · {{ user.major }}</p>
-          <p class="hero-bio">{{ user.bio }}</p>
+          <h2 class="hero-name">{{ userStore.displayName }}</h2>
+          <p class="hero-school">{{ userStore.school }} · {{ userStore.college }} · {{ userStore.grade }}</p>
+          <p class="hero-bio">{{ userStore.bio }}</p>
         </div>
       </div>
 
-      <!-- 数据统计 -->
+      <!-- 数据统计（来自 Store） -->
       <div class="stats-card">
         <div class="stat-item" @click="goTo('published')">
           <span class="stat-num">{{ stats.published }}</span>
@@ -176,22 +177,27 @@ const menuSections = [
         </div>
       </div>
 
-      <!-- 快捷信息 -->
+      <!-- 快捷信息（来自 Store） -->
       <div class="info-card">
         <div class="info-row">
           <span class="info-icon">📱</span>
           <span class="info-label">手机号</span>
-          <span class="info-value">{{ user.phone }}</span>
+          <span class="info-value">{{ userStore.phone }}</span>
         </div>
         <div class="info-row">
           <span class="info-icon">📧</span>
           <span class="info-label">邮箱</span>
-          <span class="info-value">{{ user.email }}</span>
+          <span class="info-value">{{ userStore.email }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-icon">🎓</span>
+          <span class="info-label">学号</span>
+          <span class="info-value">{{ userStore.studentId }}</span>
         </div>
         <div class="info-row">
           <span class="info-icon">📅</span>
           <span class="info-label">加入时间</span>
-          <span class="info-value">{{ user.joinedAt }}</span>
+          <span class="info-value">{{ userStore.joinedAt }}</span>
         </div>
       </div>
 
@@ -218,7 +224,7 @@ const menuSections = [
       </div>
 
       <!-- 退出按钮 -->
-      <button class="logout-btn">🚪 退出登录</button>
+      <button class="logout-btn" @click="router.push('/')">🚪 返回首页</button>
     </template>
 
     <!-- ====== 子页面通用容器 ====== -->
@@ -234,7 +240,7 @@ const menuSections = [
         <div v-for="item in myPublished" :key="item.id" class="list-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: item.type } })">
           <div class="lc-left">
             <img v-if="item.image" :src="item.image" :alt="item.title" class="lc-thumb" />
-            <span v-else class="lc-icon">{{ { trade: '🛒', errand: '🏃', groupBuy: '🤝', lostFound: '🔍' }[item.type] }}</span>
+            <span v-else class="lc-icon">{{ typeIcon(item.type) }}</span>
           </div>
           <div class="lc-body">
             <div class="lc-top">
@@ -249,29 +255,49 @@ const menuSections = [
             </div>
           </div>
         </div>
-        <div v-if="myPublished.length === 0" class="empty-tip">暂无发布记录</div>
+        <div v-if="myPublished.length === 0" class="empty-tip">
+          <span class="empty-icon">📋</span>
+          <p>暂无发布记录</p>
+          <p class="empty-hint">去发布页面发布你的第一条信息吧</p>
+        </div>
       </div>
 
-      <!-- ====== 我的收藏 ====== -->
+      <!-- ====== 我的收藏（来自 favoriteStore） ====== -->
       <div v-if="currentPage === 'favorites'" class="sub-content">
-        <div v-for="item in myFavorites" :key="item.id" class="list-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: item.type } })">
+        <div
+          v-for="item in favoriteStore.items"
+          :key="`${item.type}-${item.id}`"
+          class="list-card"
+          @click="router.push({ path: `/detail/${item.id}`, query: { type: item.type } })"
+        >
           <div class="lc-left">
             <img v-if="item.image" :src="item.image" :alt="item.title" class="lc-thumb" />
-            <span v-else class="lc-icon">❤️</span>
+            <span v-else class="lc-icon">{{ typeIcon(item.type) }}</span>
           </div>
           <div class="lc-body">
             <div class="lc-top">
-              <span class="lc-type">{{ typeLabel(item.type) }}</span>
+              <span class="lc-type">{{ favDisplayInfo(item).label }}</span>
+              <button
+                class="unfav-btn"
+                @click.stop="favoriteStore.removeFavorite(item.id, item.type)"
+                title="取消收藏"
+              >
+                ✕ 取消收藏
+              </button>
             </div>
             <h4 class="lc-title">{{ item.title }}</h4>
             <div class="lc-meta">
-              <span class="lc-price">{{ item.price }}</span>
-              <span>👤 {{ item.seller }}</span>
-              <span>{{ item.time }}</span>
+              <span class="lc-price">{{ favDisplayInfo(item).price }}</span>
+              <span>👤 {{ favDisplayInfo(item).person }}</span>
+              <span v-if="item.time">{{ item.time }}</span>
             </div>
           </div>
         </div>
-        <div v-if="myFavorites.length === 0" class="empty-tip">暂无收藏</div>
+        <div v-if="favoriteStore.items.length === 0" class="empty-tip">
+          <span class="empty-icon">💝</span>
+          <p>还没有收藏任何内容</p>
+          <p class="empty-hint">去各个列表页面逛逛，点击 🤍 收藏感兴趣的内容吧</p>
+        </div>
       </div>
 
       <!-- ====== 购买记录 ====== -->
@@ -290,7 +316,10 @@ const menuSections = [
             </div>
           </div>
         </div>
-        <div v-if="myPurchases.length === 0" class="empty-tip">暂无购买记录</div>
+        <div v-if="myPurchases.length === 0" class="empty-tip">
+          <span class="empty-icon">📦</span>
+          <p>暂无购买记录</p>
+        </div>
       </div>
 
       <!-- ====== 跑腿记录 ====== -->
@@ -313,7 +342,10 @@ const menuSections = [
             </div>
           </div>
         </div>
-        <div v-if="myErrands.length === 0" class="empty-tip">暂无跑腿记录</div>
+        <div v-if="myErrands.length === 0" class="empty-tip">
+          <span class="empty-icon">🏃</span>
+          <p>暂无跑腿记录</p>
+        </div>
       </div>
 
       <!-- ====== 失物记录 ====== -->
@@ -334,7 +366,10 @@ const menuSections = [
             </div>
           </div>
         </div>
-        <div v-if="myLostFounds.length === 0" class="empty-tip">暂无失物招领记录</div>
+        <div v-if="myLostFounds.length === 0" class="empty-tip">
+          <span class="empty-icon">🔍</span>
+          <p>暂无失物招领记录</p>
+        </div>
       </div>
 
       <!-- ====== 账号设置 ====== -->
@@ -343,8 +378,8 @@ const menuSections = [
           <div class="form-group">
             <label>头像</label>
             <div class="avatar-edit">
-              <div class="avatar-edit-preview">张</div>
-              <button type="button" class="avatar-change-btn">📷 更换头像</button>
+              <div class="avatar-edit-preview">{{ userStore.avatarChar }}</div>
+              <button type="button" class="avatar-change-btn">📷 更换头像（开发中）</button>
             </div>
           </div>
           <div class="form-group">
@@ -365,7 +400,7 @@ const menuSections = [
             <textarea id="set-bio" v-model="settingsForm.bio" rows="2" placeholder="介绍一下自己吧..."></textarea>
           </div>
           <button type="submit" class="save-btn">💾 保存设置</button>
-          <p v-if="settingsSaved" class="save-success">✅ 设置已保存</p>
+          <p v-if="settingsSaved" class="save-success">✅ 设置已保存（Store 状态已更新）</p>
         </form>
       </div>
     </template>
@@ -626,9 +661,9 @@ const menuSections = [
   width: 100%;
   padding: 12px;
   background: #fff;
-  border: 1px solid #f0c0c0;
+  border: 1px solid #d0d0d0;
   border-radius: 10px;
-  color: #e74c3c;
+  color: #888;
   font-size: 15px;
   cursor: pointer;
   transition: all 0.2s;
@@ -637,8 +672,9 @@ const menuSections = [
 }
 
 .logout-btn:hover {
-  background: #fef5f5;
-  border-color: #e74c3c;
+  background: #f5f7fa;
+  border-color: #409eff;
+  color: #409eff;
 }
 
 /* ====== 子页面头部 ====== */
@@ -770,6 +806,7 @@ const menuSections = [
   gap: 14px;
   font-size: 12px;
   color: #aaa;
+  flex-wrap: wrap;
 }
 
 .lc-price {
@@ -783,11 +820,46 @@ const menuSections = [
   font-weight: 500;
 }
 
+/* 取消收藏按钮 */
+.unfav-btn {
+  background: none;
+  border: 1px solid #f0c0c0;
+  border-radius: 4px;
+  color: #e74c3c;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.unfav-btn:hover {
+  background: #fef5f5;
+  border-color: #e74c3c;
+}
+
+/* 空状态 */
 .empty-tip {
   text-align: center;
   padding: 48px 20px;
   color: #ccc;
   font-size: 15px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+  opacity: 0.6;
+}
+
+.empty-tip p {
+  margin: 4px 0;
+  color: #bbb;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: #ccc;
 }
 
 /* ====== 设置表单 ====== */
