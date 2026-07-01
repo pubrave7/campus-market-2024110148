@@ -123,17 +123,17 @@
       "id": 10
     },
     {
-      "title": "���ָ����̲�",
+      "id": 11,
+      "title": "C语言程序设计（第4版）教材",
       "price": 15,
-      "category": "�̲Ľ̸�",
-      "condition": "�˳���",
-      "description": "��ѧ�ڹ��򣬱ʼǽ���",
-      "seller": "��ͬѧ",
+      "category": "教材教辅",
+      "condition": "八成新",
+      "description": "上学期购入，笔记较少，封面有轻微折痕，内页干净不影响使用",
+      "seller": "孙同学",
       "publishTime": "2026-06-30",
-      "location": "��У��",
+      "location": "东校区",
       "image": "",
-      "status": "open",
-      "id": 11
+      "status": "open"
     },
     {
       "id": 12,
@@ -359,7 +359,6 @@
       "contact": "王同学 139xxxx5678",
       "status": "open",
       "image": ""
-    }
     },
     {
       "id": 10,
@@ -481,16 +480,16 @@
       "status": "open"
     },
     {
+      "id": 8,
       "type": "partner",
-      "title": "������ѧ����",
-      "description": "һ��ϰ������ѧ������ල",
+      "title": "找考研数学学习搭子",
+      "description": "一起复习考研数学，互相督促打卡，每天图书馆或自习室一起学习2-3小时",
       "targetCount": 3,
       "currentCount": 1,
       "deadline": "2026-07-05",
-      "location": "ͼ���",
-      "initiator": "��ͬѧ",
-      "status": "open",
-      "id": 8
+      "location": "图书馆",
+      "initiator": "周同学",
+      "status": "open"
     },
     {
       "id": 9,
@@ -627,16 +626,16 @@
       "status": "open"
     },
     {
+      "id": 8,
       "type": "delivery",
-      "title": "��ȡ���",
-      "description": "У�ſڿ�ݹ�ȡ���͵�3������¥",
+      "title": "代取快递 — 中通两件",
+      "description": "校门口快递柜取两个中通快递，送到3号宿舍楼一楼大厅即可",
       "reward": 5,
-      "pickupLocation": "У�ſڿ�ݹ�",
-      "deliveryLocation": "3������¥",
+      "pickupLocation": "校门口快递柜",
+      "deliveryLocation": "3号宿舍楼",
       "deadline": "2026-07-01",
-      "publisher": "��ͬѧ",
-      "status": "open",
-      "id": 8
+      "publisher": "吴同学",
+      "status": "open"
     },
     {
       "id": 9,
