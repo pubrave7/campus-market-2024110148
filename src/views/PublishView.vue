@@ -40,7 +40,6 @@ function handleImageUpload(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
-  // 限制图片大小不超过 2MB
   if (file.size > 2 * 1024 * 1024) {
     alert('图片大小不能超过 2MB')
     return
@@ -82,7 +81,7 @@ const tradeForm = ref({
   condition: '九成新',
   description: '',
   location: '',
-  seller: userStore.displayName,
+  seller: userStore.isLoggedIn ? userStore.displayName : '',
 })
 
 const tradeCategories = ['教材教辅', '数码电子', '生活用品', '出行工具', '文体娱乐']
@@ -97,7 +96,7 @@ const errandForm = ref({
   pickupLocation: '',
   deliveryLocation: '',
   deadline: '',
-  publisher: userStore.displayName,
+  publisher: userStore.isLoggedIn ? userStore.displayName : '',
 })
 
 const errandTypes = [
@@ -114,7 +113,7 @@ const groupBuyForm = ref({
   targetCount: '',
   deadline: '',
   location: '',
-  initiator: userStore.displayName,
+  initiator: userStore.isLoggedIn ? userStore.displayName : '',
 })
 
 const groupBuyTypes = [
@@ -178,17 +177,6 @@ function validateLostFoundForm(): boolean {
   return Object.keys(e).length === 0
 }
 
-/** 当前表单是否通过校验 */
-const isFormValid = computed(() => {
-  switch (activeType.value) {
-    case 'trade': return validateTradeForm()
-    case 'errand': return validateErrandForm()
-    case 'groupBuy': return validateGroupBuyForm()
-    case 'lostFound': return validateLostFoundForm()
-    default: return false
-  }
-})
-
 // ---- 切换类型时清除状态和错误，重置表单 ----
 watch(activeType, () => {
   submitted.value = false
@@ -199,6 +187,12 @@ watch(activeType, () => {
 
 // ---- 提交 ----
 async function handleSubmit() {
+  // 检查是否已登录
+  if (!userStore.isLoggedIn) {
+    errorMsg.value = '请先登录后再发布信息'
+    return
+  }
+
   // 提交前执行最终校验
   let valid = false
   switch (activeType.value) {
@@ -299,14 +293,14 @@ async function handleSubmit() {
 
 // ---- 重置表单 ----
 function resetForm() {
-  tradeForm.value = { title: '', price: '', category: '教材教辅', condition: '九成新', description: '', location: '', seller: userStore.displayName }
-  errandForm.value = { type: 'delivery', title: '', description: '', reward: '', pickupLocation: '', deliveryLocation: '', deadline: '', publisher: userStore.displayName }
-  groupBuyForm.value = { type: 'group-buy', title: '', description: '', targetCount: '', deadline: '', location: '', initiator: userStore.displayName }
+  const currentSeller = userStore.isLoggedIn ? userStore.displayName : ''
+  tradeForm.value = { title: '', price: '', category: '教材教辅', condition: '九成新', description: '', location: '', seller: currentSeller }
+  errandForm.value = { type: 'delivery', title: '', description: '', reward: '', pickupLocation: '', deliveryLocation: '', deadline: '', publisher: currentSeller }
+  groupBuyForm.value = { type: 'group-buy', title: '', description: '', targetCount: '', deadline: '', location: '', initiator: currentSeller }
   lostFoundForm.value = { type: 'lost', title: '', itemName: '', description: '', location: '', date: '', contact: '' }
   removeImage()
 }
 
-// 暴露给模板使用的函数（避免 computed 副作用问题）
 function checkFormValid(): boolean {
   switch (activeType.value) {
     case 'trade': return !!tradeForm.value.title && !!tradeForm.value.price && !!tradeForm.value.description && !!tradeForm.value.seller
@@ -323,6 +317,16 @@ function checkFormValid(): boolean {
     <div class="page-header">
       <h2>✏️ 发布信息</h2>
       <p class="page-desc">选择类型，填写详情，让校园生活更便捷</p>
+    </div>
+
+    <!-- ====== 未登录提示 ====== -->
+    <div v-if="!userStore.isLoggedIn" class="login-notice">
+      <span class="notice-icon">🔐</span>
+      <div class="notice-text">
+        <p class="notice-title">请先登录后再发布信息</p>
+        <p class="notice-desc">登录后发布人信息将自动填写为当前用户</p>
+      </div>
+      <router-link to="/login" class="notice-link">去登录 →</router-link>
     </div>
 
     <!-- 类型选择 -->
@@ -392,7 +396,7 @@ function checkFormValid(): boolean {
             <input id="trade-location" v-model="tradeForm.location" type="text" placeholder="如：东校区" />
           </FormField>
           <FormField label="发布人" field-id="trade-seller" required :error="formErrors.seller" class="form-half">
-            <input id="trade-seller" v-model="tradeForm.seller" type="text" placeholder="自动使用当前用户名" />
+            <input id="trade-seller" v-model="tradeForm.seller" type="text" :placeholder="userStore.isLoggedIn ? `当前用户：${userStore.displayName}` : '请先登录'" :disabled="!userStore.isLoggedIn" />
           </FormField>
         </div>
       </template>
@@ -432,7 +436,7 @@ function checkFormValid(): boolean {
         </div>
 
         <FormField label="发布人" field-id="errand-publisher" required :error="formErrors.publisher">
-          <input id="errand-publisher" v-model="errandForm.publisher" type="text" placeholder="自动使用当前用户名" />
+          <input id="errand-publisher" v-model="errandForm.publisher" type="text" :placeholder="userStore.isLoggedIn ? `当前用户：${userStore.displayName}` : '请先登录'" :disabled="!userStore.isLoggedIn" />
         </FormField>
       </template>
 
@@ -466,7 +470,7 @@ function checkFormValid(): boolean {
             <input id="gb-location" v-model="groupBuyForm.location" type="text" placeholder="如：东校区" />
           </FormField>
           <FormField label="发起人" field-id="gb-initiator" required :error="formErrors.initiator" class="form-half">
-            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" placeholder="自动使用当前用户名" />
+            <input id="gb-initiator" v-model="groupBuyForm.initiator" type="text" :placeholder="userStore.isLoggedIn ? `当前用户：${userStore.displayName}` : '请先登录'" :disabled="!userStore.isLoggedIn" />
           </FormField>
         </div>
       </template>
@@ -521,7 +525,12 @@ function checkFormValid(): boolean {
       </template>
 
       <!-- 提交按钮 -->
-      <button type="submit" class="submit-btn" :disabled="!checkFormValid() || submitting">
+      <button
+        type="submit"
+        class="submit-btn"
+        :disabled="!userStore.isLoggedIn || !checkFormValid() || submitting"
+        :title="!userStore.isLoggedIn ? '请先登录后再发布' : ''"
+      >
         {{ submitting ? '发布中...' : '🚀 立即发布' }}
       </button>
     </form>
@@ -556,6 +565,57 @@ function checkFormValid(): boolean {
 .page-desc {
   color: #888;
   font-size: 14px;
+}
+
+/* ---- 未登录提示 ---- */
+.login-notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+.notice-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.notice-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-title {
+  margin: 0 0 2px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #d46b08;
+}
+
+.notice-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #ad8b5a;
+}
+
+.notice-link {
+  padding: 8px 18px;
+  background: #fa8c16;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.notice-link:hover {
+  background: #d46b08;
 }
 
 /* ---- 类型标签 ---- */
@@ -630,6 +690,12 @@ select:focus {
   border-color: #409eff;
   outline: none;
   box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.15);
+}
+
+input:disabled {
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
 }
 
 /* ---- 图片上传 ---- */

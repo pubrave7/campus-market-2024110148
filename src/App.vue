@@ -1,5 +1,14 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
+
+onMounted(() => {
+  // App 启动时尝试从 localStorage 恢复登录状态
+  userStore.restoreLogin()
+})
 </script>
 
 <template>

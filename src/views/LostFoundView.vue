@@ -1,20 +1,39 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getLostFounds, type LostFoundItem } from '@/api/lostFound'
 import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
+import ErrorState from '@/components/ErrorState.vue'
+import SearchBar from '@/components/SearchBar.vue'
 
 const router = useRouter()
 const favoriteStore = useFavoriteStore()
 
 const items = ref<LostFoundItem[]>([])
 const loading = ref(true)
+const error = ref(false)
 const activeTab = ref<'lost' | 'found'>('lost')
+const keyword = ref('')
 
 function filteredItems() {
-  return items.value.filter(item => item.type === activeTab.value)
+  let list = items.value.filter(item => item.type === activeTab.value)
+  if (keyword.value.trim()) {
+    const kw = keyword.value.trim().toLowerCase()
+    list = list.filter(item =>
+      item.title.toLowerCase().includes(kw) ||
+      item.description?.toLowerCase().includes(kw) ||
+      item.location?.toLowerCase().includes(kw)
+    )
+  }
+  return list
 }
+
+const searchInfo = computed(() => {
+  if (!keyword.value.trim()) return ''
+  return `搜索"${keyword.value}"，找到 ${filteredItems().length} 条结果`
+})
 
 function handleFavorite(item: LostFoundItem, event: Event) {
   event.stopPropagation()
@@ -28,14 +47,21 @@ function handleFavorite(item: LostFoundItem, event: Event) {
   })
 }
 
-onMounted(async () => {
+async function fetchData() {
+  loading.value = true
+  error.value = false
   try {
     items.value = await getLostFounds()
   } catch (err) {
     console.error('获取失物招领数据失败:', err)
+    error.value = true
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  fetchData()
 })
 </script>
 
@@ -45,6 +71,9 @@ onMounted(async () => {
       <h2>🔍 失物招领</h2>
       <p class="page-desc">发布失物或招领信息，互帮互助共建温暖校园</p>
     </div>
+
+    <!-- 搜索栏 -->
+    <SearchBar v-model="keyword" placeholder="搜索失物招领信息..." />
 
     <!-- 类型切换 -->
     <div class="tab-bar">
@@ -64,9 +93,19 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- 信息列表 -->
-    <EmptyState v-if="!loading && filteredItems().length === 0" message="暂无相关信息" />
+    <!-- 搜索结果提示 -->
+    <p v-if="searchInfo" class="search-info">{{ searchInfo }}</p>
 
+    <!-- 加载状态 -->
+    <LoadingState v-if="loading" message="正在加载失物招领信息..." />
+
+    <!-- 错误状态 -->
+    <ErrorState v-else-if="error" message="失物招领数据加载失败" @retry="fetchData" />
+
+    <!-- 空状态 -->
+    <EmptyState v-else-if="filteredItems().length === 0" message="暂无相关信息" />
+
+    <!-- 信息列表 -->
     <div v-else class="lf-list">
       <div v-for="item in filteredItems()" :key="item.id" class="lf-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'lostFound' } })">
         <img v-if="item.image" :src="item.image" :alt="item.title" class="lf-img" />
@@ -116,6 +155,16 @@ onMounted(async () => {
 .page-desc {
   color: #888;
   font-size: 14px;
+}
+
+.search-info {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #888;
+  padding: 6px 12px;
+  background: #f0f7ff;
+  border-radius: 6px;
+  display: inline-block;
 }
 
 .tab-bar {
@@ -239,20 +288,27 @@ onMounted(async () => {
 /* ---- 收藏按钮 ---- */
 .fav-btn {
   background: none;
-  border: none;
+  border: 1px solid #e8e8e8;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 22px;
-  padding: 4px;
-  transition: transform 0.2s;
+  font-size: 18px;
+  padding: 6px;
+  transition: all 0.2s;
   flex-shrink: 0;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .fav-btn:hover {
-  transform: scale(1.25);
+  transform: scale(1.15);
+  border-color: #f0c0c0;
 }
 
 .fav-btn.favorited {
+  background: #fff5f5;
+  border-color: #f0a0a0;
   animation: heartBeat 0.3s ease;
 }
 

@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getGroupBuys, type GroupBuyItem } from '@/api/groupBuy'
 import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
+import ErrorState from '@/components/ErrorState.vue'
+import SearchBar from '@/components/SearchBar.vue'
 
 const router = useRouter()
 const favoriteStore = useFavoriteStore()
 
 const items = ref<GroupBuyItem[]>([])
 const loading = ref(true)
+const error = ref(false)
 const activeType = ref('all')
+const keyword = ref('')
 
 const types = [
   { key: 'all', label: '全部', icon: '📋' },
@@ -20,9 +25,22 @@ const types = [
 ]
 
 function filteredItems() {
-  if (activeType.value === 'all') return items.value
-  return items.value.filter(item => item.type === activeType.value)
+  let list = activeType.value === 'all' ? items.value : items.value.filter(item => item.type === activeType.value)
+  if (keyword.value.trim()) {
+    const kw = keyword.value.trim().toLowerCase()
+    list = list.filter(item =>
+      item.title.toLowerCase().includes(kw) ||
+      item.description?.toLowerCase().includes(kw) ||
+      item.initiator?.toLowerCase().includes(kw)
+    )
+  }
+  return list
 }
+
+const searchInfo = computed(() => {
+  if (!keyword.value.trim()) return ''
+  return `搜索"${keyword.value}"，找到 ${filteredItems().length} 条结果`
+})
 
 function typeLabel(key: string) {
   const t = types.find(t => t.key === key)
@@ -45,14 +63,21 @@ function handleFavorite(item: GroupBuyItem, event: Event) {
   })
 }
 
-onMounted(async () => {
+async function fetchData() {
+  loading.value = true
+  error.value = false
   try {
     items.value = await getGroupBuys()
   } catch (err) {
     console.error('获取拼单搭子数据失败:', err)
+    error.value = true
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  fetchData()
 })
 </script>
 
@@ -62,6 +87,9 @@ onMounted(async () => {
       <h2>🤝 拼单搭子</h2>
       <p class="page-desc">拼单团购 · 找学习/运动搭子 · 组队参赛</p>
     </div>
+
+    <!-- 搜索栏 -->
+    <SearchBar v-model="keyword" placeholder="搜索拼单、搭子、组队..." />
 
     <!-- 类型筛选 -->
     <div class="type-filter">
@@ -76,9 +104,19 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- 拼单列表 -->
-    <EmptyState v-if="!loading && filteredItems().length === 0" message="暂无相关拼单" />
+    <!-- 搜索结果提示 -->
+    <p v-if="searchInfo" class="search-info">{{ searchInfo }}</p>
 
+    <!-- 加载状态 -->
+    <LoadingState v-if="loading" message="正在加载拼单信息..." />
+
+    <!-- 错误状态 -->
+    <ErrorState v-else-if="error" message="拼单数据加载失败" @retry="fetchData" />
+
+    <!-- 空状态 -->
+    <EmptyState v-else-if="filteredItems().length === 0" message="暂无相关拼单" />
+
+    <!-- 拼单列表 -->
     <div v-else class="group-list">
       <div v-for="item in filteredItems()" :key="item.id" class="group-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'groupBuy' } })">
         <div class="gc-left">
@@ -131,6 +169,16 @@ onMounted(async () => {
 .page-desc {
   color: #888;
   font-size: 14px;
+}
+
+.search-info {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #888;
+  padding: 6px 12px;
+  background: #f0f7ff;
+  border-radius: 6px;
+  display: inline-block;
 }
 
 .type-filter {
@@ -262,20 +310,27 @@ onMounted(async () => {
 /* ---- 收藏按钮 ---- */
 .fav-btn {
   background: none;
-  border: none;
+  border: 1px solid #e8e8e8;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 22px;
-  padding: 4px;
-  transition: transform 0.2s;
+  font-size: 18px;
+  padding: 6px;
+  transition: all 0.2s;
   flex-shrink: 0;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .fav-btn:hover {
-  transform: scale(1.25);
+  transform: scale(1.15);
+  border-color: #f0c0c0;
 }
 
 .fav-btn.favorited {
+  background: #fff5f5;
+  border-color: #f0a0a0;
   animation: heartBeat 0.3s ease;
 }
 

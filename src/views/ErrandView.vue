@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getErrands, type ErrandItem } from '@/api/errand'
 import { useFavoriteStore } from '@/stores/favorite'
 import EmptyState from '@/components/EmptyState.vue'
+import LoadingState from '@/components/LoadingState.vue'
+import ErrorState from '@/components/ErrorState.vue'
+import SearchBar from '@/components/SearchBar.vue'
 
 const router = useRouter()
 const favoriteStore = useFavoriteStore()
 
 const tasks = ref<ErrandItem[]>([])
 const loading = ref(true)
+const error = ref(false)
 const activeFilter = ref('all')
+const keyword = ref('')
 
 const filters = [
   { key: 'all', label: '全部' },
@@ -20,9 +25,22 @@ const filters = [
 ]
 
 function filteredTasks() {
-  if (activeFilter.value === 'all') return tasks.value
-  return tasks.value.filter(t => t.type === activeFilter.value)
+  let list = activeFilter.value === 'all' ? tasks.value : tasks.value.filter(t => t.type === activeFilter.value)
+  if (keyword.value.trim()) {
+    const kw = keyword.value.trim().toLowerCase()
+    list = list.filter(t =>
+      t.title.toLowerCase().includes(kw) ||
+      t.description?.toLowerCase().includes(kw) ||
+      t.publisher?.toLowerCase().includes(kw)
+    )
+  }
+  return list
 }
+
+const searchInfo = computed(() => {
+  if (!keyword.value.trim()) return ''
+  return `搜索"${keyword.value}"，找到 ${filteredTasks().length} 条结果`
+})
 
 function statusLabel(status: string) {
   const map: Record<string, string> = { open: '待接单', claimed: '已接单', done: '已完成' }
@@ -42,14 +60,21 @@ function handleFavorite(task: ErrandItem, event: Event) {
   })
 }
 
-onMounted(async () => {
+async function fetchData() {
+  loading.value = true
+  error.value = false
   try {
     tasks.value = await getErrands()
   } catch (err) {
     console.error('获取跑腿委托数据失败:', err)
+    error.value = true
   } finally {
     loading.value = false
   }
+}
+
+onMounted(() => {
+  fetchData()
 })
 </script>
 
@@ -59,6 +84,9 @@ onMounted(async () => {
       <h2>🏃 跑腿委托</h2>
       <p class="page-desc">代取快递 · 代办事务 · 代买代送，让校园生活更便捷</p>
     </div>
+
+    <!-- 搜索栏 -->
+    <SearchBar v-model="keyword" placeholder="搜索跑腿委托..." />
 
     <!-- 筛选标签 -->
     <div class="filter-bar">
@@ -73,9 +101,19 @@ onMounted(async () => {
       </button>
     </div>
 
-    <!-- 任务列表 -->
-    <EmptyState v-if="!loading && filteredTasks().length === 0" message="暂无相关委托" />
+    <!-- 搜索结果提示 -->
+    <p v-if="searchInfo" class="search-info">{{ searchInfo }}</p>
 
+    <!-- 加载状态 -->
+    <LoadingState v-if="loading" message="正在加载跑腿任务..." />
+
+    <!-- 错误状态 -->
+    <ErrorState v-else-if="error" message="跑腿数据加载失败" @retry="fetchData" />
+
+    <!-- 空状态 -->
+    <EmptyState v-else-if="filteredTasks().length === 0" message="暂无相关委托" />
+
+    <!-- 任务列表 -->
     <div v-else class="task-list">
       <div v-for="task in filteredTasks()" :key="task.id" class="task-card" @click="router.push({ path: `/detail/${task.id}`, query: { type: 'errand' } })">
         <div class="task-left">
@@ -129,6 +167,16 @@ onMounted(async () => {
 .page-desc {
   color: #888;
   font-size: 14px;
+}
+
+.search-info {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #888;
+  padding: 6px 12px;
+  background: #f0f7ff;
+  border-radius: 6px;
+  display: inline-block;
 }
 
 .filter-bar {
@@ -279,20 +327,27 @@ onMounted(async () => {
 /* ---- 收藏按钮 ---- */
 .fav-btn {
   background: none;
-  border: none;
+  border: 1px solid #e8e8e8;
+  border-radius: 50%;
   cursor: pointer;
-  font-size: 22px;
-  padding: 4px;
-  transition: transform 0.2s;
+  font-size: 18px;
+  padding: 6px;
+  transition: all 0.2s;
   flex-shrink: 0;
   line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .fav-btn:hover {
-  transform: scale(1.25);
+  transform: scale(1.15);
+  border-color: #f0c0c0;
 }
 
 .fav-btn.favorited {
+  background: #fff5f5;
+  border-color: #f0a0a0;
   animation: heartBeat 0.3s ease;
 }
 

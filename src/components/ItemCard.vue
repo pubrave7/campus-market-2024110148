@@ -1,17 +1,44 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = withDefaults(defineProps<{
   title: string
   image?: string
-  icon?: string
-}>()
+}>(), {})
+
+/** 无图片时取标题前两个字作为占位符 */
+const placeholder = computed(() => {
+  const t = props.title.trim()
+  return t.slice(0, 2) || 'No'
+})
+
+/** 根据标题生成稳定的背景色 */
+const bgColor = computed(() => {
+  let hash = 0
+  for (let i = 0; i < props.title.length; i++) {
+    hash = props.title.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash % 360)
+  return `hsl(${hue}, 55%, 88%)`
+})
+
+const textColor = computed(() => {
+  let hash = 0
+  for (let i = 0; i < props.title.length; i++) {
+    hash = props.title.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const hue = Math.abs(hash % 360)
+  return `hsl(${hue}, 50%, 35%)`
+})
 </script>
 
 <template>
   <div class="item-card">
     <div class="card-image">
       <img v-if="image" :src="image" :alt="title" class="card-img" />
-      <span v-else-if="icon" class="card-icon">{{ icon }}</span>
-      <span v-else class="card-icon">📦</span>
+      <div v-else class="card-placeholder" :style="{ background: bgColor, color: textColor }">
+        <span class="placeholder-text">{{ placeholder }}</span>
+      </div>
     </div>
     <div class="card-body">
       <h3 class="card-title">{{ title }}</h3>
@@ -28,7 +55,7 @@ defineProps<{
 <style scoped>
 .item-card {
   border: 1px solid #e8e8e8;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fff;
   overflow: hidden;
   transition: all 0.2s;
@@ -37,12 +64,12 @@ defineProps<{
 
 .item-card:hover {
   border-color: #409eff;
-  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.12);
-  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(64, 158, 255, 0.12);
+  transform: translateY(-3px);
 }
 
 .card-image {
-  height: 100px;
+  height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -55,22 +82,39 @@ defineProps<{
   object-fit: cover;
 }
 
-.card-icon {
-  font-size: 40px;
+.card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.placeholder-text {
+  opacity: 0.8;
 }
 
 .card-body {
-  padding: 14px 16px;
+  padding: 16px;
 }
 
 .card-title {
   font-size: 15px;
-  margin: 0 0 8px 0;
-  color: #333;
+  margin: 0 0 10px 0;
+  color: #222;
+  font-weight: 600;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-extra {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .card-footer {

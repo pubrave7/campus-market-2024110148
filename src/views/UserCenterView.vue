@@ -1,74 +1,157 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useFavoriteStore } from '@/stores/favorite'
+import { getTrades, type TradeItem } from '@/api/trade'
+import { getErrands, type ErrandItem } from '@/api/errand'
+import { getGroupBuys, type GroupBuyItem } from '@/api/groupBuy'
+import { getLostFounds, type LostFoundItem } from '@/api/lostFound'
+import LoadingState from '@/components/LoadingState.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 const favoriteStore = useFavoriteStore()
 
-// ====== 统计数据（来自 Store） ======
+// ====== 从 API 获取当前用户发布的真实数据 ======
+const myTrades = ref<TradeItem[]>([])
+const myErrands = ref<ErrandItem[]>([])
+const myGroupBuys = ref<GroupBuyItem[]>([])
+const myLostFounds = ref<LostFoundItem[]>([])
+const loadingPublished = ref(false)
+
+/** 统一格式的发布项 */
+interface PublishedItem {
+  id: number
+  type: 'trade' | 'errand' | 'groupBuy' | 'lostFound'
+  title: string
+  price: string
+  status: string
+  time: string
+  image?: string
+}
+
+const allPublished = computed<PublishedItem[]>(() => {
+  const items: PublishedItem[] = [
+    ...myTrades.value.map(t => ({
+      id: t.id,
+      type: 'trade' as const,
+      title: t.title,
+      price: `¥${t.price}`,
+      status: t.status,
+      time: t.publishTime,
+      image: t.image,
+    })),
+    ...myErrands.value.map(e => ({
+      id: e.id,
+      type: 'errand' as const,
+      title: e.title,
+      price: `¥${e.reward}`,
+      status: e.status,
+      time: e.deadline,
+      image: e.image,
+    })),
+    ...myGroupBuys.value.map(g => ({
+      id: g.id,
+      type: 'groupBuy' as const,
+      title: g.title,
+      price: `${g.currentCount}/${g.targetCount}人`,
+      status: g.status,
+      time: g.deadline,
+      image: g.image,
+    })),
+    ...myLostFounds.value.map(l => ({
+      id: l.id,
+      type: 'lostFound' as const,
+      title: l.title,
+      price: l.type === 'lost' ? '寻物' : '招领',
+      status: l.status,
+      time: l.date,
+      image: l.image,
+    })),
+  ]
+  // 按时间倒序排列
+  return items.sort((a, b) => b.time.localeCompare(a.time))
+})
+
+async function fetchMyPublished() {
+  if (!userStore.isLoggedIn) return
+  loadingPublished.value = true
+  try {
+    const displayName = userStore.displayName
+    const [trades, errands, groupBuys, lostFounds] = await Promise.all([
+      getTrades().catch(() => [] as TradeItem[]),
+      getErrands().catch(() => [] as ErrandItem[]),
+      getGroupBuys().catch(() => [] as GroupBuyItem[]),
+      getLostFounds().catch(() => [] as LostFoundItem[]),
+    ])
+    myTrades.value = trades.filter(t => t.seller === displayName)
+    myErrands.value = errands.filter(e => e.publisher === displayName)
+    myGroupBuys.value = groupBuys.filter(g => g.initiator === displayName)
+    myLostFounds.value = lostFounds.filter(l => l.contact === displayName)
+  } catch {
+    // ignore
+  } finally {
+    loadingPublished.value = false
+  }
+}
+
+// 登录状态变化时重新获取
+watch(() => userStore.isLoggedIn, (val) => {
+  if (val) fetchMyPublished()
+})
+
+onMounted(() => {
+  if (userStore.isLoggedIn) fetchMyPublished()
+})
+
+// ====== 统计数据（来源于真实 API 数据） ======
 const stats = computed(() => ({
-  published: userStore.publishedCount,
-  sold: userStore.soldCount,
-  purchased: userStore.purchasedCount,
+  published: allPublished.value.length,
+  activeTrades: myTrades.value.filter(t => t.status === 'open').length,
+  activeErrands: myErrands.value.filter(e => e.status === 'open').length,
   favorited: favoriteStore.count,
 }))
 
 // ====== 视图状态 ======
-type SubPage = 'main' | 'published' | 'favorites' | 'purchased' | 'errands' | 'lostfounds' | 'settings'
+type SubPage = 'main' | 'published' | 'favorites' | 'settings'
 const currentPage = ref<SubPage>('main')
 const pageTitle = computed(() => {
   const map: Record<SubPage, string> = {
     main: '个人中心',
     published: '我的发布',
     favorites: '我的收藏',
-    purchased: '购买记录',
-    errands: '跑腿记录',
-    lostfounds: '失物记录',
     settings: '账号设置',
   }
   return map[currentPage.value]
 })
 
 function goTo(page: SubPage) {
+  if (!userStore.isLoggedIn) {
+    router.push('/login')
+    return
+  }
   currentPage.value = page
+  if (page === 'published') fetchMyPublished()
 }
 
 function goBack() {
   currentPage.value = 'main'
 }
 
-// ====== 我的发布 mock（组合展示，为后续真实查询做准备） ======
-const myPublished = ref([
-  { id: 1, type: 'trade', title: '二手教材《数据结构》', price: '¥25', status: 'open', time: '2026-06-25', views: 128, image: 'https://placehold.co/60x60/e8f4fd/409eff?text=Book' },
-  { id: 2, type: 'errand', title: '代取快递 — 中通×2', price: '¥5', status: 'open', time: '2026-06-28', views: 34, image: '' },
-  { id: 3, type: 'groupBuy', title: '水果拼单 — 当季芒果', price: '¥25/人', status: 'open', time: '2026-06-27', views: 56, image: '' },
-  { id: 4, type: 'lostFound', title: '黑色双肩包（寻物）', price: '—', status: 'open', time: '2026-06-27', views: 89, image: '' },
-  { id: 5, type: 'trade', title: 'LED 护眼台灯', price: '¥45', status: 'closed', time: '2026-06-20', views: 210, image: 'https://placehold.co/60x60/fff7ed/f59e0b?text=Lamp' },
-])
+// ====== 退出登录 ======
+function handleLogout() {
+  userStore.logout()
+  currentPage.value = 'main'
+  // 清空发布数据
+  myTrades.value = []
+  myErrands.value = []
+  myGroupBuys.value = []
+  myLostFounds.value = []
+  router.push('/')
+}
 
-// ====== 购买记录 mock ======
-const myPurchases = ref([
-  { id: 1, title: '考研数学复习全书', seller: '周同学', price: '¥30', time: '2026-06-22', status: 'done' },
-  { id: 2, title: '小型电风扇（桌面USB款）', seller: '吴同学', price: '¥20', time: '2026-06-18', status: 'done' },
-])
-
-// ====== 跑腿记录 mock ======
-const myErrands = ref([
-  { id: 1, role: 'publish', title: '代取快递 — 中通×2', reward: '¥5', status: 'open', time: '2026-06-28', taker: '—' },
-  { id: 2, role: 'take', title: '代办 — 图书归还', reward: '¥3', status: 'done', time: '2026-06-27', publisher: '刘同学' },
-  { id: 3, role: 'publish', title: '委托 — 帮忙搬宿舍', reward: '¥30', status: 'open', time: '2026-06-26', taker: '—' },
-])
-
-// ====== 失物记录 mock ======
-const myLostFounds = ref([
-  { id: 1, type: 'lost', title: '蓝牙耳机充电仓', status: 'open', time: '2026-06-26', location: '教学楼 A201' },
-  { id: 2, type: 'found', title: '校园卡（张XX）', status: 'open', time: '2026-06-28', location: '一食堂门口' },
-])
-
-// ====== 账号设置（从 Store 读取） ======
+// ====== 账号设置 ======
 const settingsForm = ref({
   nickname: userStore.name,
   phone: userStore.phone,
@@ -90,13 +173,8 @@ function saveSettings() {
 
 // ====== 工具函数 ======
 function typeLabel(type: string) {
-  const map: Record<string, string> = { trade: '二手', errand: '跑腿', groupBuy: '拼单', lostFound: '失物招领' }
+  const map: Record<string, string> = { trade: '二手交易', errand: '跑腿委托', groupBuy: '拼单搭子', lostFound: '失物招领' }
   return map[type] || type
-}
-
-function statusLabel(status: string) {
-  const map: Record<string, string> = { open: '进行中', closed: '已结束', done: '已完成', claimed: '已接单' }
-  return map[status] || status
 }
 
 function typeIcon(type: string) {
@@ -104,100 +182,149 @@ function typeIcon(type: string) {
   return map[type] || '📦'
 }
 
-function statusClass(status: string) {
-  return status === 'open' ? 's-open' : 's-closed'
+function typeColor(type: string) {
+  const map: Record<string, string> = { trade: '#409eff', errand: '#e6a23c', groupBuy: '#67c23a', lostFound: '#7c3aed' }
+  return map[type] || '#666'
 }
 
-/** 从收藏 Store 中获取收藏条目的显示信息 */
+function statusLabel(status: string) {
+  const map: Record<string, string> = { open: '进行中', closed: '已结束', done: '已完成', claimed: '已接单' }
+  return map[status] || status
+}
+
+function statusClass(status: string) {
+  if (status === 'open') return 's-open'
+  if (status === 'closed' || status === 'done' || status === 'claimed') return 's-closed'
+  return ''
+}
+
 function favDisplayInfo(item: typeof favoriteStore.items[number]) {
   const label = typeLabel(item.type)
   const person = item.seller || item.publisher || item.initiator || '—'
-  const price = item.price !== undefined ? (typeof item.price === 'number' ? `¥${item.price}` : item.price) : '—'
+  const price = item.price !== undefined ? (typeof item.price === 'number' ? `¥${item.price}` : String(item.price)) : '—'
   return { label, person, price }
 }
 
-const menuSections = [
+const menuSections = computed(() => [
   {
-    title: '交易管理',
+    title: '我的数据',
     items: [
-      { icon: '📋', label: '我的发布', desc: '查看已发布的商品、拼单等信息', page: 'published' as SubPage, color: '#409eff' },
+      { icon: '📋', label: '我的发布', desc: `${allPublished.value.length} 条发布记录`, page: 'published' as SubPage, color: '#409eff' },
       { icon: '❤️', label: '我的收藏', desc: `收藏了 ${favoriteStore.count} 个宝贝`, page: 'favorites' as SubPage, color: '#e74c3c' },
-      { icon: '📦', label: '购买记录', desc: '已购买的物品', page: 'purchased' as SubPage, color: '#67c23a' },
     ],
   },
   {
-    title: '其他服务',
+    title: '账号管理',
     items: [
-      { icon: '🏃', label: '跑腿记录', desc: '我发布的委托和接单记录', page: 'errands' as SubPage, color: '#e6a23c' },
-      { icon: '🔍', label: '失物记录', desc: '我发布的失物与招领信息', page: 'lostfounds' as SubPage, color: '#7c3aed' },
-      { icon: '⚙️', label: '账号设置', desc: '修改资料、绑定手机等', page: 'settings' as SubPage, color: '#666' },
+      { icon: '⚙️', label: '账号设置', desc: '修改资料、手机号等', page: 'settings' as SubPage, color: '#666' },
     ],
   },
-]
+])
 </script>
 
 <template>
   <section class="user-page">
-    <!-- ====== 主页面 ====== -->
-    <template v-if="currentPage === 'main'">
+    <!-- ====== 未登录页面 ====== -->
+    <template v-if="!userStore.isLoggedIn">
+      <div class="login-prompt">
+        <div class="prompt-card">
+          <div class="prompt-avatar">🔐</div>
+          <h2>欢迎来到个人中心</h2>
+          <p class="prompt-sub">登录后可以管理你的发布、收藏和账号信息</p>
+          <div class="prompt-actions">
+            <router-link to="/login" class="prompt-btn primary">
+              <span>🔑</span> 登录
+            </router-link>
+            <router-link to="/register" class="prompt-btn">
+              <span>📝</span> 注册
+            </router-link>
+          </div>
+          <p class="prompt-hint">💡 测试账号：zhangsan / 123456</p>
+        </div>
+      </div>
+    </template>
+
+    <!-- ====== 已登录：主页面 ====== -->
+    <template v-else-if="currentPage === 'main'">
       <!-- 头部卡片 -->
       <div class="profile-hero">
-        <div class="hero-bg"></div>
         <div class="hero-content">
           <div class="avatar-wrap">
             <div class="avatar-main">{{ userStore.avatarChar }}</div>
             <span class="verified-badge">✓</span>
           </div>
           <h2 class="hero-name">{{ userStore.displayName }}</h2>
-          <p class="hero-school">{{ userStore.school }} · {{ userStore.college }} · {{ userStore.grade }}</p>
-          <p class="hero-bio">{{ userStore.bio }}</p>
+          <p class="hero-info">{{ userStore.school }}{{ userStore.college ? ' · ' + userStore.college : '' }}{{ userStore.grade ? ' · ' + userStore.grade : '' }}</p>
+          <p class="hero-bio">{{ userStore.bio || '这个人很懒，什么都没写...' }}</p>
         </div>
       </div>
 
-      <!-- 数据统计（来自 Store） -->
-      <div class="stats-card">
-        <div class="stat-item" @click="goTo('published')">
-          <span class="stat-num">{{ stats.published }}</span>
-          <span class="stat-label">已发布</span>
+      <!-- 数据统计卡片 -->
+      <div class="stats-row">
+        <div class="stat-card" @click="goTo('published')">
+          <div class="stat-icon-wrap" style="background: #e8f4fd;">
+            <span class="stat-icon">📋</span>
+          </div>
+          <div class="stat-info">
+            <span class="stat-num">{{ stats.published }}</span>
+            <span class="stat-label">全部发布</span>
+          </div>
         </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item">
-          <span class="stat-num">{{ stats.sold }}</span>
-          <span class="stat-label">已售出</span>
+        <div class="stat-card" @click="goTo('published')">
+          <div class="stat-icon-wrap" style="background: #fff7ed;">
+            <span class="stat-icon">🛒</span>
+          </div>
+          <div class="stat-info">
+            <span class="stat-num">{{ stats.activeTrades }}</span>
+            <span class="stat-label">二手在售</span>
+          </div>
         </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item" @click="goTo('purchased')">
-          <span class="stat-num">{{ stats.purchased }}</span>
-          <span class="stat-label">已购买</span>
+        <div class="stat-card" @click="goTo('published')">
+          <div class="stat-icon-wrap" style="background: #fef0f0;">
+            <span class="stat-icon">🏃</span>
+          </div>
+          <div class="stat-info">
+            <span class="stat-num">{{ stats.activeErrands }}</span>
+            <span class="stat-label">跑腿委托</span>
+          </div>
         </div>
-        <div class="stat-divider"></div>
-        <div class="stat-item" @click="goTo('favorites')">
-          <span class="stat-num">{{ stats.favorited }}</span>
-          <span class="stat-label">收藏</span>
+        <div class="stat-card" @click="goTo('favorites')">
+          <div class="stat-icon-wrap" style="background: #fef5f5;">
+            <span class="stat-icon">❤️</span>
+          </div>
+          <div class="stat-info">
+            <span class="stat-num">{{ stats.favorited }}</span>
+            <span class="stat-label">我的收藏</span>
+          </div>
         </div>
       </div>
 
-      <!-- 快捷信息（来自 Store） -->
+      <!-- 快捷信息 -->
       <div class="info-card">
+        <div class="info-row">
+          <span class="info-icon">👤</span>
+          <span class="info-label">用户名</span>
+          <span class="info-value">{{ userStore.username }}</span>
+        </div>
         <div class="info-row">
           <span class="info-icon">📱</span>
           <span class="info-label">手机号</span>
-          <span class="info-value">{{ userStore.phone }}</span>
+          <span class="info-value">{{ userStore.phone || '未设置' }}</span>
         </div>
         <div class="info-row">
           <span class="info-icon">📧</span>
           <span class="info-label">邮箱</span>
-          <span class="info-value">{{ userStore.email }}</span>
+          <span class="info-value">{{ userStore.email || '未设置' }}</span>
         </div>
         <div class="info-row">
           <span class="info-icon">🎓</span>
           <span class="info-label">学号</span>
-          <span class="info-value">{{ userStore.studentId }}</span>
+          <span class="info-value">{{ userStore.studentId || '未设置' }}</span>
         </div>
         <div class="info-row">
           <span class="info-icon">📅</span>
-          <span class="info-label">加入时间</span>
-          <span class="info-value">{{ userStore.joinedAt }}</span>
+          <span class="info-label">注册时间</span>
+          <span class="info-value">{{ userStore.joinedAt || '未知' }}</span>
         </div>
       </div>
 
@@ -224,42 +351,55 @@ const menuSections = [
       </div>
 
       <!-- 退出按钮 -->
-      <button class="logout-btn" @click="router.push('/')">🚪 返回首页</button>
+      <button class="logout-btn" @click="handleLogout">
+        <span>🚪</span> 退出登录
+      </button>
     </template>
 
     <!-- ====== 子页面通用容器 ====== -->
     <template v-else>
-      <!-- 头部 -->
       <div class="sub-header">
         <button class="back-btn" @click="goBack">← 返回</button>
         <h2>{{ pageTitle }}</h2>
       </div>
 
-      <!-- ====== 我的发布 ====== -->
+      <!-- ====== 我的发布（来自 API 真实数据） ====== -->
       <div v-if="currentPage === 'published'" class="sub-content">
-        <div v-for="item in myPublished" :key="item.id" class="list-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: item.type } })">
-          <div class="lc-left">
-            <img v-if="item.image" :src="item.image" :alt="item.title" class="lc-thumb" />
-            <span v-else class="lc-icon">{{ typeIcon(item.type) }}</span>
-          </div>
-          <div class="lc-body">
-            <div class="lc-top">
-              <span class="lc-type">{{ typeLabel(item.type) }}</span>
-              <span class="lc-status" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
+        <LoadingState v-if="loadingPublished" message="正在加载发布记录..." size="small" />
+
+        <template v-else>
+          <div
+            v-for="item in allPublished"
+            :key="`${item.type}-${item.id}`"
+            class="list-card"
+            @click="router.push({ path: `/detail/${item.id}`, query: { type: item.type } })"
+          >
+            <div class="lc-left">
+              <img v-if="item.image" :src="item.image" :alt="item.title" class="lc-thumb" />
+              <span v-else class="lc-icon" :style="{ background: typeColor(item.type) + '18' }">{{ typeIcon(item.type) }}</span>
             </div>
-            <h4 class="lc-title">{{ item.title }}</h4>
-            <div class="lc-meta">
-              <span class="lc-price">{{ item.price }}</span>
-              <span>{{ item.time }}</span>
-              <span>👁 {{ item.views }}</span>
+            <div class="lc-body">
+              <div class="lc-top">
+                <span class="lc-type" :style="{ background: typeColor(item.type) + '18', color: typeColor(item.type) }">
+                  {{ typeLabel(item.type) }}
+                </span>
+                <span class="lc-status" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
+              </div>
+              <h4 class="lc-title">{{ item.title }}</h4>
+              <div class="lc-meta">
+                <span class="lc-price">{{ item.price }}</span>
+                <span>{{ item.time }}</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div v-if="myPublished.length === 0" class="empty-tip">
-          <span class="empty-icon">📋</span>
-          <p>暂无发布记录</p>
-          <p class="empty-hint">去发布页面发布你的第一条信息吧</p>
-        </div>
+          <div v-if="allPublished.length === 0 && !loadingPublished" class="empty-tip">
+            <span class="empty-icon">📋</span>
+            <p>暂无发布记录</p>
+            <p class="empty-hint">
+              <router-link to="/publish" class="empty-link">✏️ 去发布第一条信息吧</router-link>
+            </p>
+          </div>
+        </template>
       </div>
 
       <!-- ====== 我的收藏（来自 favoriteStore） ====== -->
@@ -272,11 +412,13 @@ const menuSections = [
         >
           <div class="lc-left">
             <img v-if="item.image" :src="item.image" :alt="item.title" class="lc-thumb" />
-            <span v-else class="lc-icon">{{ typeIcon(item.type) }}</span>
+            <span v-else class="lc-icon" :style="{ background: typeColor(item.type) + '18' }">{{ typeIcon(item.type) }}</span>
           </div>
           <div class="lc-body">
             <div class="lc-top">
-              <span class="lc-type">{{ favDisplayInfo(item).label }}</span>
+              <span class="lc-type" :style="{ background: typeColor(item.type) + '18', color: typeColor(item.type) }">
+                {{ favDisplayInfo(item).label }}
+              </span>
               <button
                 class="unfav-btn"
                 @click.stop="favoriteStore.removeFavorite(item.id, item.type)"
@@ -297,78 +439,6 @@ const menuSections = [
           <span class="empty-icon">💝</span>
           <p>还没有收藏任何内容</p>
           <p class="empty-hint">去各个列表页面逛逛，点击 🤍 收藏感兴趣的内容吧</p>
-        </div>
-      </div>
-
-      <!-- ====== 购买记录 ====== -->
-      <div v-if="currentPage === 'purchased'" class="sub-content">
-        <div v-for="item in myPurchases" :key="item.id" class="list-card">
-          <div class="lc-left">
-            <span class="lc-icon">📦</span>
-          </div>
-          <div class="lc-body">
-            <h4 class="lc-title">{{ item.title }}</h4>
-            <div class="lc-meta">
-              <span class="lc-price">{{ item.price }}</span>
-              <span>👤 {{ item.seller }}</span>
-              <span>{{ item.time }}</span>
-              <span class="done-tag">✓ 已成交</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="myPurchases.length === 0" class="empty-tip">
-          <span class="empty-icon">📦</span>
-          <p>暂无购买记录</p>
-        </div>
-      </div>
-
-      <!-- ====== 跑腿记录 ====== -->
-      <div v-if="currentPage === 'errands'" class="sub-content">
-        <div v-for="item in myErrands" :key="item.id" class="list-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'errand' } })">
-          <div class="lc-left">
-            <span class="lc-icon">{{ item.role === 'publish' ? '📤' : '📥' }}</span>
-          </div>
-          <div class="lc-body">
-            <div class="lc-top">
-              <span class="lc-type">{{ item.role === 'publish' ? '我发布的' : '我接单的' }}</span>
-              <span class="lc-status" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
-            </div>
-            <h4 class="lc-title">{{ item.title }}</h4>
-            <div class="lc-meta">
-              <span class="lc-price">{{ item.reward }}</span>
-              <span v-if="item.role === 'publish'">接单人: {{ item.taker }}</span>
-              <span v-else>发布者: {{ item.publisher }}</span>
-              <span>{{ item.time }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="myErrands.length === 0" class="empty-tip">
-          <span class="empty-icon">🏃</span>
-          <p>暂无跑腿记录</p>
-        </div>
-      </div>
-
-      <!-- ====== 失物记录 ====== -->
-      <div v-if="currentPage === 'lostfounds'" class="sub-content">
-        <div v-for="item in myLostFounds" :key="item.id" class="list-card" @click="router.push({ path: `/detail/${item.id}`, query: { type: 'lostFound' } })">
-          <div class="lc-left">
-            <span class="lc-icon">{{ item.type === 'lost' ? '😢' : '🙌' }}</span>
-          </div>
-          <div class="lc-body">
-            <div class="lc-top">
-              <span class="lc-type">{{ item.type === 'lost' ? '寻物启事' : '失物招领' }}</span>
-              <span class="lc-status" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
-            </div>
-            <h4 class="lc-title">{{ item.title }}</h4>
-            <div class="lc-meta">
-              <span>📍 {{ item.location }}</span>
-              <span>{{ item.time }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="myLostFounds.length === 0" class="empty-tip">
-          <span class="empty-icon">🔍</span>
-          <p>暂无失物招领记录</p>
         </div>
       </div>
 
@@ -400,7 +470,7 @@ const menuSections = [
             <textarea id="set-bio" v-model="settingsForm.bio" rows="2" placeholder="介绍一下自己吧..."></textarea>
           </div>
           <button type="submit" class="save-btn">💾 保存设置</button>
-          <p v-if="settingsSaved" class="save-success">✅ 设置已保存（Store 状态已更新）</p>
+          <p v-if="settingsSaved" class="save-success">✅ 设置已保存</p>
         </form>
       </div>
     </template>
@@ -409,161 +479,273 @@ const menuSections = [
 
 <style scoped>
 .user-page {
-  max-width: 640px;
+  max-width: 680px;
   margin: 0 auto;
-  padding-bottom: 24px;
+  padding-bottom: 32px;
+}
+
+/* ====== 未登录提示 ====== */
+.login-prompt {
+  display: flex;
+  justify-content: center;
+  padding: 60px 20px;
+}
+
+.prompt-card {
+  text-align: center;
+  background: #fff;
+  border-radius: 20px;
+  padding: 48px 40px;
+  border: 1px solid #e8e8e8;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.04);
+  max-width: 420px;
+  width: 100%;
+}
+
+.prompt-avatar {
+  font-size: 64px;
+  margin-bottom: 20px;
+  width: 96px;
+  height: 96px;
+  line-height: 96px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8f4fd, #f0f7ff);
+  margin: 0 auto 20px;
+}
+
+.prompt-card h2 {
+  font-size: 22px;
+  color: #222;
+  margin: 0 0 8px 0;
+  font-weight: 700;
+}
+
+.prompt-sub {
+  color: #999;
+  font-size: 14px;
+  margin: 0 0 28px 0;
+  line-height: 1.6;
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.prompt-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 32px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: 2px solid #d0d0d0;
+  color: #555;
+  background: #fff;
+}
+
+.prompt-btn:hover {
+  border-color: #409eff;
+  color: #409eff;
+  transform: translateY(-1px);
+}
+
+.prompt-btn.primary {
+  background: linear-gradient(135deg, #409eff, #5b7fff);
+  color: #fff;
+  border-color: transparent;
+}
+
+.prompt-btn.primary:hover {
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.35);
+}
+
+.prompt-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #ccc;
 }
 
 /* ====== 头部卡片 ====== */
 .profile-hero {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  margin-bottom: 14px;
-}
-
-.hero-bg {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, #409eff 0%, #67c23a 100%);
-  opacity: 0.08;
+  margin-bottom: 20px;
 }
 
 .hero-content {
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 32px 20px 24px;
+  padding: 36px 24px 28px;
   text-align: center;
   background: #fff;
   border: 1px solid #e8e8e8;
-  border-radius: 16px;
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #409eff, #67c23a, #e6a23c, #e74c3c);
 }
 
 .avatar-wrap {
   position: relative;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .avatar-main {
-  width: 80px;
-  height: 80px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
   background: linear-gradient(135deg, #409eff, #67c23a);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 34px;
+  font-size: 36px;
   font-weight: 700;
-  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.25);
+  box-shadow: 0 6px 20px rgba(64, 158, 255, 0.3);
 }
 
 .verified-badge {
   position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 22px;
-  height: 22px;
+  bottom: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: #67c23a;
   color: #fff;
-  font-size: 12px;
+  font-size: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #fff;
+  border: 3px solid #fff;
+  font-weight: 700;
 }
 
 .hero-name {
-  margin: 0 0 4px 0;
-  font-size: 22px;
+  margin: 0 0 6px 0;
+  font-size: 24px;
   color: #222;
+  font-weight: 700;
 }
 
-.hero-school {
-  margin: 0 0 6px 0;
+.hero-info {
+  margin: 0 0 8px 0;
   color: #888;
   font-size: 14px;
 }
 
 .hero-bio {
   margin: 0;
-  color: #aaa;
+  color: #bbb;
   font-size: 13px;
   font-style: italic;
+  max-width: 300px;
 }
 
-/* ====== 统计卡片 ====== */
-.stats-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-  padding: 18px 8px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
-  margin-bottom: 14px;
+/* ====== 数据统计 ====== */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
-.stat-item {
+.stat-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 10px;
+  padding: 18px 8px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 14px;
   cursor: pointer;
-  transition: transform 0.15s;
-  padding: 4px 8px;
-  border-radius: 8px;
+  transition: all 0.2s;
 }
 
-.stat-item:hover {
+.stat-card:hover {
   transform: translateY(-2px);
-  background: #f8fafc;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  border-color: #cce0ff;
+}
+
+.stat-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-icon {
+  font-size: 22px;
+}
+
+.stat-info {
+  text-align: center;
 }
 
 .stat-num {
+  display: block;
   font-size: 24px;
-  font-weight: 700;
-  color: #409eff;
+  font-weight: 800;
+  color: #222;
+  line-height: 1.2;
 }
 
 .stat-label {
   font-size: 12px;
   color: #999;
-}
-
-.stat-divider {
-  width: 1px;
-  height: 30px;
-  background: #eee;
+  font-weight: 500;
 }
 
 /* ====== 信息卡片 ====== */
 .info-card {
   background: #fff;
   border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 6px 0;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
+  overflow: hidden;
 }
 
 .info-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
-  border-bottom: 1px solid #f5f5f5;
+  gap: 12px;
+  padding: 13px 20px;
+  transition: background 0.15s;
 }
 
-.info-row:last-child {
-  border-bottom: none;
+.info-row:hover {
+  background: #fafbfc;
 }
 
 .info-icon {
   font-size: 16px;
   flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f5f7fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .info-label {
@@ -576,43 +758,46 @@ const menuSections = [
   color: #333;
   font-size: 14px;
   margin-left: auto;
+  font-weight: 500;
 }
 
 /* ====== 菜单 ====== */
 .menu-section {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .section-title {
-  font-size: 15px;
-  color: #666;
+  font-size: 13px;
+  color: #aaa;
   margin-bottom: 10px;
-  padding-left: 4px;
+  padding-left: 6px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .menu-grid {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  border: 1px solid #e8e8e8;
-  border-radius: 12px;
+  border: 1px solid #eee;
+  border-radius: 14px;
   overflow: hidden;
-  background: #eee;
+  background: #f5f5f5;
 }
 
 .menu-item {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 15px 18px;
+  padding: 16px 20px;
   background: #fff;
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .menu-item:hover {
-  background: #f8fafc;
+  background: #fafbfc;
 }
 
 .menu-item:active {
@@ -620,9 +805,9 @@ const menuSections = [
 }
 
 .menu-icon-wrap {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -639,8 +824,8 @@ const menuSections = [
   display: block;
   font-size: 15px;
   color: #333;
-  font-weight: 500;
-  margin-bottom: 2px;
+  font-weight: 600;
+  margin-bottom: 3px;
 }
 
 .menu-desc {
@@ -650,7 +835,7 @@ const menuSections = [
 }
 
 .menu-arrow {
-  font-size: 22px;
+  font-size: 20px;
   color: #ccc;
   flex-shrink: 0;
   font-weight: 300;
@@ -659,22 +844,26 @@ const menuSections = [
 /* ====== 退出按钮 ====== */
 .logout-btn {
   width: 100%;
-  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px;
   background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 10px;
-  color: #888;
+  border: 1px solid #f0c0c0;
+  border-radius: 12px;
+  color: #e74c3c;
   font-size: 15px;
   cursor: pointer;
   transition: all 0.2s;
-  margin-top: 8px;
+  margin-top: 4px;
   font-weight: 500;
+  font-family: inherit;
 }
 
 .logout-btn:hover {
-  background: #f5f7fa;
-  border-color: #409eff;
-  color: #409eff;
+  background: #fef5f5;
+  border-color: #e74c3c;
 }
 
 /* ====== 子页面头部 ====== */
@@ -682,13 +871,13 @@ const menuSections = [
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
   padding-bottom: 14px;
   border-bottom: 1px solid #eee;
 }
 
 .back-btn {
-  padding: 6px 14px;
+  padding: 7px 16px;
   border: 1px solid #d0d0d0;
   border-radius: 8px;
   background: #fff;
@@ -697,6 +886,7 @@ const menuSections = [
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
+  font-family: inherit;
 }
 
 .back-btn:hover {
@@ -708,22 +898,23 @@ const menuSections = [
   margin: 0;
   font-size: 20px;
   color: #222;
+  font-weight: 700;
 }
 
 /* ====== 子页面内容 ====== */
 .sub-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .list-card {
   display: flex;
-  gap: 14px;
-  padding: 16px;
+  gap: 16px;
+  padding: 18px;
   background: #fff;
   border: 1px solid #e8e8e8;
-  border-radius: 10px;
+  border-radius: 14px;
   cursor: pointer;
   transition: all 0.2s;
   align-items: center;
@@ -731,7 +922,8 @@ const menuSections = [
 
 .list-card:hover {
   border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(64, 158, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.08);
+  transform: translateX(2px);
 }
 
 .lc-left {
@@ -739,21 +931,21 @@ const menuSections = [
 }
 
 .lc-thumb {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #f5f7fa;
 }
 
 .lc-icon {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f7fa;
-  border-radius: 8px;
-  font-size: 24px;
+  border-radius: 10px;
+  font-size: 26px;
 }
 
 .lc-body {
@@ -765,26 +957,26 @@ const menuSections = [
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .lc-type {
   font-size: 11px;
-  padding: 2px 7px;
-  background: #f0f7ff;
-  color: #409eff;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-weight: 600;
 }
 
 .lc-status {
   font-size: 11px;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-weight: 500;
 }
 
 .s-open {
-  background: #fef0f0;
-  color: #e74c3c;
+  background: #fff7ed;
+  color: #e6a23c;
 }
 
 .s-closed {
@@ -793,9 +985,10 @@ const menuSections = [
 }
 
 .lc-title {
-  margin: 0 0 6px 0;
+  margin: 0 0 8px 0;
   font-size: 15px;
   color: #333;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -803,33 +996,30 @@ const menuSections = [
 
 .lc-meta {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   font-size: 12px;
   color: #aaa;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .lc-price {
   color: #e74c3c;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.done-tag {
-  color: #67c23a;
-  font-weight: 500;
+  font-weight: 700;
+  font-size: 15px;
 }
 
 /* 取消收藏按钮 */
 .unfav-btn {
   background: none;
   border: 1px solid #f0c0c0;
-  border-radius: 4px;
+  border-radius: 6px;
   color: #e74c3c;
   font-size: 11px;
-  padding: 2px 8px;
+  padding: 3px 10px;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: inherit;
 }
 
 .unfav-btn:hover {
@@ -840,37 +1030,46 @@ const menuSections = [
 /* 空状态 */
 .empty-tip {
   text-align: center;
-  padding: 48px 20px;
-  color: #ccc;
-  font-size: 15px;
+  padding: 56px 20px;
 }
 
 .empty-icon {
-  font-size: 48px;
+  font-size: 52px;
   display: block;
-  margin-bottom: 12px;
-  opacity: 0.6;
+  margin-bottom: 16px;
+  opacity: 0.5;
 }
 
 .empty-tip p {
-  margin: 4px 0;
+  margin: 6px 0;
   color: #bbb;
+  font-size: 15px;
 }
 
 .empty-hint {
-  font-size: 13px;
-  color: #ccc;
+  font-size: 13px !important;
+  color: #ccc !important;
+}
+
+.empty-link {
+  color: #409eff;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.empty-link:hover {
+  text-decoration: underline;
 }
 
 /* ====== 设置表单 ====== */
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   background: #fff;
   border: 1px solid #e8e8e8;
-  border-radius: 12px;
-  padding: 24px;
+  border-radius: 14px;
+  padding: 28px;
 }
 
 .form-group {
@@ -887,23 +1086,25 @@ const menuSections = [
 
 .form-group input,
 .form-group textarea {
-  padding: 10px 14px;
+  padding: 11px 14px;
   border: 1px solid #d0d0d0;
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
   transition: border-color 0.2s;
   outline: none;
+  background: #fafafa;
 }
 
 .form-group input:focus,
 .form-group textarea:focus {
   border-color: #409eff;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.1);
+  background: #fff;
 }
 
 .form-group input:disabled {
-  background: #f5f5f5;
+  background: #f0f0f0;
   color: #999;
   cursor: not-allowed;
 }
@@ -916,24 +1117,25 @@ const menuSections = [
 .avatar-edit {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
 }
 
 .avatar-edit-preview {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: linear-gradient(135deg, #409eff, #67c23a);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
 }
 
 .avatar-change-btn {
-  padding: 8px 16px;
+  padding: 8px 18px;
   border: 1px dashed #d0d0d0;
   border-radius: 8px;
   background: #fafafa;
@@ -941,6 +1143,7 @@ const menuSections = [
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
+  font-family: inherit;
 }
 
 .avatar-change-btn:hover {
@@ -949,30 +1152,38 @@ const menuSections = [
 }
 
 .save-btn {
-  padding: 12px 24px;
-  background: #409eff;
+  padding: 13px 24px;
+  background: linear-gradient(135deg, #409eff, #5b7fff);
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
   margin-top: 4px;
+  font-family: inherit;
 }
 
 .save-btn:hover {
-  background: #337ecc;
-  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 .save-success {
   margin: 0;
-  padding: 8px 14px;
+  padding: 10px 16px;
   background: #f0f9eb;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #67c23a;
   font-size: 14px;
   text-align: center;
+  font-weight: 500;
+}
+
+@media (max-width: 600px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>
