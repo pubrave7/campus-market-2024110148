@@ -186,10 +186,10 @@ watch(activeConversation, () => {
   nextTick(scrollToBottom)
 })
 
-// 格式化时间
-function formatConvTime(time: string) {
-  return time
-}
+// 格式化时间（保留工具方法供后续扩展）
+// function formatConvTime(time: string) {
+//   return time
+// }
 </script>
 
 <template>

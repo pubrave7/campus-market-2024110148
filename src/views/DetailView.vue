@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { getTradeById, type TradeItem } from '@/api/trade'
 import { getErrandById, type ErrandItem } from '@/api/errand'
 import { getGroupBuyById, type GroupBuyItem } from '@/api/groupBuy'
 import { getLostFoundById, type LostFoundItem } from '@/api/lostFound'
 
 const route = useRoute()
-const router = useRouter()
 
 const itemId = Number(route.params.id)
 const itemType = (route.query.type as string) || 'trade'
@@ -35,17 +34,21 @@ const backRoute = computed(() => {
   return map[itemType] || '/'
 })
 
-// 是否为指定类型
-function isTrade(item: any): item is TradeItem {
+// 是否为指定类型（类型守卫函数）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+function isTrade(_item: any): _item is TradeItem {
   return itemType === 'trade'
 }
-function isErrand(item: any): item is ErrandItem {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+function isErrand(_item: any): _item is ErrandItem {
   return itemType === 'errand'
 }
-function isGroupBuy(item: any): item is GroupBuyItem {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+function isGroupBuy(_item: any): _item is GroupBuyItem {
   return itemType === 'groupBuy'
 }
-function isLostFound(item: any): item is LostFoundItem {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+function isLostFound(_item: any): _item is LostFoundItem {
   return itemType === 'lostFound'
 }
 
@@ -61,11 +64,11 @@ function statusLabel(status: string) {
   return map[status] || status
 }
 
-// 格式化日期
-function formatDate(dateStr: string) {
-  if (!dateStr) return ''
-  return dateStr.replace('T', ' ').slice(0, 16)
-}
+// 格式化日期（保留工具方法供后续使用）
+// function formatDate(dateStr: string) {
+//   if (!dateStr) return ''
+//   return dateStr.replace('T', ' ').slice(0, 16)
+// }
 
 onMounted(async () => {
   if (!itemId) {
